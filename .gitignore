@@ -1,0 +1,36 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.lib
+*.bin
+
+# Build directories
+build/
+port/build/
+
+# Generated files from unpacking
+unpack/
+work/*.sav
+work/*.txt*
+work/*.log
+work/*.err
+work/*.pid
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+*.osu
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
