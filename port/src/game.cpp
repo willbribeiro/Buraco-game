@@ -147,7 +147,7 @@ bool Game::draw(bool fromTable) {
 
 Game::LayOptions Game::layOptions(const std::vector<Card>& cards) const {
     LayOptions o;
-    if (phase_ != Phase::Play || cards.size() < size_t(MELD_MIN)) return o;
+    if (phase_ != Phase::Play || cards.empty()) return o;
 
     const PlayerState& p = players_[current_];
     Meld built;
@@ -157,6 +157,9 @@ Game::LayOptions Game::layOptions(const std::vector<Card>& cards) const {
     const bool blocked = wouldEmpty && p.tookMorto && !hasCanastra(p);
     o.canCreate = o.isMeld && int(p.melds.size()) < kMaxMelds && !blocked;
 
+    // Extending is legal with any number of cards; only a brand-new meld needs
+    // three.  This is what lets the player drop a single card on an existing
+    // run, as in the original.
     for (size_t i = 0; i < p.melds.size(); ++i) {
         if (p.melds[i].empty()) continue;
         Meld probe = p.melds[i];
@@ -167,7 +170,7 @@ Game::LayOptions Game::layOptions(const std::vector<Card>& cards) const {
 
 std::string Game::layMeld(const std::vector<Card>& cards, int target) {
     if (phase_ != Phase::Play) return "Agora nao e hora de baixar jogos.";
-    if (cards.size() < size_t(MELD_MIN)) return "Escolha pelo menos 3 cartas.";
+    if (cards.empty()) return "Escolha pelo menos uma carta.";
 
     PlayerState& p = players_[current_];
     const bool wouldEmpty = cards.size() == p.hand.size();
@@ -185,9 +188,10 @@ std::string Game::layMeld(const std::vector<Card>& cards, int target) {
     // The player explicitly asked for a second meld of a suit that is already
     // on the table.
     if (target == kNewMeld) {
+        if (cards.size() < size_t(MELD_MIN)) return "Um jogo novo precisa de pelo menos 3 cartas.";
         Meld built;
         if (!buildMeldAuto(cards, built)) return "Estas cartas nao formam um jogo valido.";
-        if (int(p.melds.size()) >= kMaxMelds) return "Voce ja tem quatro jogos.";
+        if (int(p.melds.size()) >= kMaxMelds) return "Nao cabem mais jogos na mesa.";
         takeFromHand();
         p.melds.push_back(built);
         info("Jogo baixado.");
@@ -215,7 +219,7 @@ std::string Game::layMeld(const std::vector<Card>& cards, int target) {
             info("Jogo aumentado.");
             return finish();
         }
-        if (int(p.melds.size()) >= kMaxMelds) return "Voce ja tem quatro jogos.";
+        if (int(p.melds.size()) >= kMaxMelds) return "Nao cabem mais jogos na mesa.";
         takeFromHand();
         p.melds.push_back(built);
         info("Jogo baixado.");
@@ -429,7 +433,7 @@ bool Game::canUseTableCard(const Card& top) const {
             Meld probe;
             if (!buildMeldAuto(sel, probe)) continue;
             if (room) return true;
-            // With four melds on the table layMeld can only grow an existing
+            // When every meld slot is taken layMeld can only grow an existing
             // one; without this check the AI kept buying a table it could not
             // actually use, so the hand never ended.
             for (const Meld& m : me.melds) {
@@ -550,8 +554,7 @@ bool Game::aiLayMelds() {
                         laid = true;
                         break;
                     }
-                    // Four melds are already on the table and none of them
-                    // accepts these cards: try another pair instead.
+                    // No free meld slot accepts these cards: try another pair instead.
                 }
             }
         }
@@ -628,7 +631,7 @@ void Game::aiDiscard() {
 //   name <seat> <text to end of line>
 //   player <seat> <tookMorto> <wentOut> <lastHandPoints> <total> <n> <ids...>
 //   melds <seat> <count>
-//   meld <suit> <dirty> <15 ids> <15 wild flags>
+//   meld <seat> <suit> <dirty> <15 ids> <15 wild flags>
 //   monte <n> <ids...>   mesa <n> <ids...>   morto <n> <ids...>
 //   msg <text to end of line>
 

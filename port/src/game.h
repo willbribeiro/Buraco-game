@@ -30,7 +30,7 @@ enum class Prompt { None, TakeDiscard, NewHand };
 struct PlayerState {
     std::string name;
     std::vector<Card> hand;
-    std::vector<Meld> melds;   // at most one per suit, max 4
+    std::vector<Meld> melds;   // up to 15 slots, any mix of suits
     bool tookMorto = false;
     bool wentOut = false;
     int lastHandPoints = 0;    // points scored in the hand that just ended
@@ -75,7 +75,9 @@ public:
     bool canTakeDiscard() const;
 
     // Play phase: lay the given cards as a new meld or add them to an existing
-    // one.  Returns an empty string on success, otherwise a user-facing reason.
+    // one.  A new meld needs at least three cards, but growing an existing
+    // meld accepts any number of cards (even one).  Returns an empty string on
+    // success, otherwise a user-facing reason.
     //
     // `target` selects what to do when both are possible:
     //   -1       auto (extend the first compatible meld, else create a new one)
@@ -122,10 +124,10 @@ public:
 private:
     static constexpr int kTargetScore = 3000;
 
-    // How many melds a player may have on the table (the old code assumed one
-    // per suit; the real game also lets you start another run of a suit you
-    // already have).
-    static constexpr int kMaxMelds = 4;
+    // How many melds a player may have on the table.  The original keeps 15
+    // meld slots per player (FUN_1000_4926 scans slots 1..15), so there is no
+    // "four melds" rule and any number of runs may share a suit.
+    static constexpr int kMaxMelds = 15;
 
     void beginTurn();
     void nextTurn();

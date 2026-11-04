@@ -17,7 +17,7 @@ extraída do próprio jogo).
 | Baralho 108 cartas (2 baralhos + 4 curingas) | ✅ |
 | Distribuição 11/11, morto de 22, monte de 64 | ✅ |
 | Comprar do monte / comprar a mesa (leva **todas** as cartas) | ✅ |
-| Baixar jogo, aumentar jogo, vários jogos do mesmo naipe (até 4) | ✅ |
+| Baixar jogo, aumentar jogo, vários jogos do mesmo naipe (até 15 slots) | ✅ |
 | Escolher entre aumentar um jogo existente ou baixar um novo do mesmo naipe | ✅ |
 | Curingas (2 e joker) preenchendo buracos e topo | ✅ |
 | Pegar o morto (11 + 11), penalidade de −100 | ✅ |
@@ -74,6 +74,7 @@ carregada em `SDL_GetBasePath()/assets/font8x16.bin`).
 | Tecla | Ação |
 |---|---|
 | ← / → | escolhe a carta sob o cursor (marcador `▼` na linha 17) |
+| ↑ / ↓ | rola a lista de jogos na mesa (quando passa de 6) |
 | Espaço | marca/desmarca a carta para baixar |
 | ENTER (fase compra) | compra do monte |
 | S / N | responde "Comprar a mesa (S/N) ?" (S leva a mesa inteira) |
@@ -176,8 +177,9 @@ Constantes recuperadas de `FUN_1000_1920` (réguas e divisória) e de
 * Curinga = rank 2 **ou** naipe 5 (`FUN_1000_1c6c`); vale 10 (2) / 20 (joker).
 * Pontos por rank: `A=15`, `2=10`, `3..7=5`, `8..K=10`, `A alto=15`.
 * Jogo: um naipe, ranks consecutivos, ≥3 cartas; curingas preenchem buracos
-  internos e/ou estendem o topo. Cada jogador pode ter até 4 jogos, inclusive
-  mais de um do mesmo naipe (o novo jogo também precisa de ≥3 cartas).
+  internos e/ou estendem o topo. Cada jogador tem 15 slots de jogo, sem limite
+  por naipe; aumentar um jogo já baixado aceita qualquer número de cartas
+  (o novo jogo é que precisa de ≥3).
 * Comprar a mesa leva **todas** as cartas do descarte, não só a última; a
   última carta comprada vira `lastDrawn_` e é a primeira que a IA tenta baixar.
 * Canastra: ≥7 cartas → +200 limpa, +100 suja (com curinga).
@@ -215,11 +217,12 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 1. **Painel de jogos**: o original desenha cada jogo como uma fileira de cartas
    em `FUN_1000_221f`; o porte usa uma linha compacta por jogo
-   (`♣ 3 4 5 2♥ 7 … c+200`) para caber até quatro jogos sem rolagem.
+   (`♣ 3 4 5 2♥ 7 … c+200`). Cabem 6 linhas por vez; ↑/↓ rolam a lista quando
+   há mais jogos.
 2. **IA**: heurística própria (não é a do original, que era guiada por
    perguntas ao jogador). Ela compra a mesa só quando a carta do topo fecha um
    jogo imediatamente (aumentando um jogo existente ou formando um novo, dentro
-   do limite de quatro); caso contrário compra do monte.
+   do limite de slots); caso contrário compra do monte.
 3. **Save**: `F2` grava um arquivo texto (`BURACO-SAVE 1`) com mãos, jogos,
    morto, monte, mesa, placar, fase, jogador da vez e o estado do RNG, para a
    partida continuar exatamente do ponto gravado. `F5` restaura.

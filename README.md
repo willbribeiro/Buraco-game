@@ -40,6 +40,7 @@ Os scripts de build detalhados usam *MinGW-w64 GCC 16.2.0 (UCRT, POSIX, SEH)*,
 | Tecla | Ação |
 |---|---|
 | ← / → | escolhe a carta sob o cursor |
+| ↑ / ↓ | rola a lista de jogos na mesa |
 | `Espaço` | marca/desmarca a carta para baixar |
 | `ENTER` (compra) | compra do monte (`S`/`N` compra a mesa inteira) |
 | `ENTER` (jogo) | baixa as cartas marcadas; sem marcação → descarte |
@@ -63,7 +64,8 @@ Baixas e canastras no porte:
 * Baralho de 108 cartas (2 baralhos + 4 curingas), distribuição 11/11,
   morto de 22 e monte de 64.
 * Comprar do monte ou comprar a mesa (leva **todas** as cartas), baixar e
-  aumentar jogos, até quatro jogos por jogador (inclusive do mesmo naipe).
+  aumentar jogos, até 15 jogos por jogador (inclusive do mesmo naipe);
+  aumentar um jogo aceita qualquer número de cartas (até uma).
 * Curingas preenchendo buracos internos e estendendo o topo.
 * Pegar o morto (11 + 11), penalidade de −100 para quem nunca pegou.
 * Bater (200 baixando / 100 descartando), exigência de canastra,

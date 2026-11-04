@@ -811,6 +811,7 @@ constexpr int COL_MELD_R = 41;
 
 struct UiState {
     int cursor = 0;
+    int meldScroll = 0;   // first meld row shown in the table panel
     std::vector<bool> selected;
     bool help = false;
     bool status = false;
@@ -938,28 +939,41 @@ inline void drawPiles(dos::Video& v, const Game& g) {
     }
 }
 
-inline void drawMelds(dos::Video& v, const Game& g) {
+inline void drawMelds(dos::Video& v, const Game& g, const UiState& ui) {
     static const char* kHeader[2] = {"SEUS JOGOS", "MEUS JOGOS"};
     const int col[2] = {COL_MELD_L, COL_MELD_R};
     const int maxCol[2] = {37, 78};
+    const int rows = ROW_RULE3 - ROW_MELD;
     for (int seat = 0; seat < 2; ++seat) {
-        puts(v, col[seat], ROW_RULE2 + 1, kHeader[seat], DIM);
         const auto& melds = g.player(seat).melds;
+        int total = 0;
+        for (const Meld& m : melds)
+            if (!m.empty()) ++total;
+        const int start = std::clamp(ui.meldScroll, 0, std::max(0, total - rows));
+
+        if (total > rows) {
+            char header[40];
+            std::snprintf(header, sizeof header, "%s %d-%d/%d", kHeader[seat], start + 1,
+                          std::min(total, start + rows), total);
+            puts(v, col[seat], ROW_RULE2 + 1, header, DIM);
+        } else {
+            puts(v, col[seat], ROW_RULE2 + 1, kHeader[seat], DIM);
+        }
+
         int row = ROW_MELD;
         int shown = 0;
-        for (const Meld& m : melds) {
-            if (m.empty()) continue;
-            if (shown >= 5) break;
-            drawMeldLine(v, m, col[seat], row, maxCol[seat]);
+        for (size_t i = size_t(start); i < melds.size() && shown < rows; ++i) {
+            if (melds[i].empty()) continue;
+            drawMeldLine(v, melds[i], col[seat], row, maxCol[seat]);
             ++row;
             ++shown;
         }
-        if (shown == 0) puts(v, col[seat], ROW_MELD, "nenhum jogo", DIM);
+        if (total == 0) puts(v, col[seat], ROW_MELD, "nenhum jogo", DIM);
     }
-    // Scores on the right of the split line.
+    // Scores between the two headers so they never sit on top of a meld line.
     char buf[64];
     std::snprintf(buf, sizeof buf, "%d  x  %d", g.player(0).total, g.player(1).total);
-    puts(v, 30, ROW_MELD + 4, buf, DIM);
+    puts(v, 30, ROW_RULE2 + 1, buf, DIM);
 }
 
 inline void drawHand(dos::Video& v, const Game& g, const UiState& ui) {
@@ -1093,10 +1107,11 @@ inline void drawHelp(dos::Video& v) {
         "As flechas para esquerda e direita servem para escolher as suas cartas.",
         "Quando voce tiver escolhido, aperte a barra de espacos para que eu",
         "saiba qual carta voce escolheu. Se voce nao quizer mais esta carta,",
-        "aperte a barra novamente. Para baixar um jogo, escolha algumas cartas",
-        "e no fim aperte ENTER. Para descartar, aperte ENTER sem ter escolhido",
-        "nenhuma carta. Se ja houver um jogo do mesmo naipe, eu pergunto se",
-        "voce quer aumentar o jogo ou baixar um novo.",
+        "aperte a barra novamente. Para baixar um jogo novo, escolha pelo menos",
+        "tres cartas e aperte ENTER. Para aumentar um jogo, escolha uma ou mais",
+        "cartas. Para descartar, aperte ENTER sem ter escolhido nenhuma carta.",
+        "Se ja houver um jogo do mesmo naipe, eu pergunto se voce quer aumentar",
+        "o jogo ou baixar um novo.",
         "",
         "As flechas para cima e para baixo mostram os jogos que estao na mesa.",
         "Os jogos dos dois jogadores ficam sempre visiveis.",
@@ -1142,7 +1157,7 @@ inline void draw(dos::Video& v, const Game& g, const UiState& ui) {
     puts(v, 0, ROW_MSG, g.message(), FIELD);
 
     drawPiles(v, g);
-    drawMelds(v, g);
+    drawMelds(v, g, ui);
     drawHand(v, g, ui);
 
     if (g.phase() == buraco::Phase::HandOver) drawHandOver(v, g);
@@ -1491,6 +1506,21 @@ int main(int argc, char** argv) {
             case SDLK_RIGHT:
                 ui.cursor = std::min(std::max(0, handSize - 1), ui.cursor + 1);
                 return;
+            case SDLK_UP:
+            case SDLK_DOWN: {
+                const int rows = ui::ROW_RULE3 - ui::ROW_MELD;
+                int count = 0;
+                for (int seat = 0; seat < 2; ++seat) {
+                    int n = 0;
+                    for (const auto& m : game.player(seat).melds)
+                        if (!m.empty()) ++n;
+                    count = std::max(count, n);
+                }
+                const int maxScroll = std::max(0, count - rows);
+                ui.meldScroll = std::clamp(ui.meldScroll + (sym == SDLK_DOWN ? 1 : -1), 0,
+                                           maxScroll);
+                return;
+            }
             case SDLK_SPACE:
                 if (ui.cursor >= 0 && ui.cursor < int(ui.selected.size()))
                     ui.selected[ui.cursor] = !ui.selected[ui.cursor];
