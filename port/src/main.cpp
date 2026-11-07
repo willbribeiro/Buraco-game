@@ -899,6 +899,7 @@ inline void drawMeldLine(dos::Video& v, const Meld& m, int col, int row, int max
     int x = col;
     put(v, x++, row, uint8_t(buraco::suitGlyphFor(m.suit)), FIELD);
     put(v, x++, row, ' ', FIELD);
+    const bool real = m.realCanastra();
     for (int slot = 1; slot <= 15; ++slot) {
         const Card& c = m.slot[slot];
         if (!c.valid()) continue;
@@ -906,7 +907,8 @@ inline void drawMeldLine(dos::Video& v, const Meld& m, int col, int row, int max
             puts(v, x, row, "...", DIM);
             return;
         }
-        const bool wild = m.wild[slot];
+        // In a real canastra the 2 is its natural rank, not a wildcard.
+        const bool wild = m.wild[slot] && !(real && slot == 2);
         const uint8_t fg = wild ? WILD : FIELD;
         if (wild) {
             put(v, x++, row, uint8_t(buraco::rankGlyph(c)), fg);
@@ -918,7 +920,9 @@ inline void drawMeldLine(dos::Video& v, const Meld& m, int col, int row, int max
         }
         put(v, x++, row, ' ', FIELD);
     }
-    if (m.canastra()) {
+    if (m.realCanastra()) {
+        puts(v, x + 1, row, "c+500", FIELD);
+    } else if (m.canastra()) {
         const std::string tag = m.dirty ? "c+100" : "c+200";
         puts(v, x + 1, row, tag, m.dirty ? WILD : DIM);
     }
@@ -1071,32 +1075,127 @@ inline void drawStatus(dos::Video& v, const Game& g) {
     puts(v, c0 + 3, r0 + 4, buf, DIM);
 }
 
-inline void drawHandOver(dos::Video& v, const Game& g) {
-    const int r0 = 8, r1 = 15, c0 = 0, c1 = 79;
-    for (int r = r0; r <= r1; ++r)
-        for (int c = c0; c <= c1; ++c) put(v, c, r, ' ', FIELD);
-    put(v, c0, r0, 0xC9, FIELD);
-    for (int c = c0 + 1; c < c1; ++c) put(v, c, r0, 0xCD, FIELD);
-    put(v, c1, r0, 0xBB, FIELD);
-    for (int r = r0 + 1; r < r1; ++r) {
-        put(v, c0, r, 0xBA, FIELD);
-        put(v, c1, r, 0xBA, FIELD);
+// Compact name for a meld slot (1..13, plus the ace-high slot 14).
+inline std::string slotName(int slot) {
+    switch (slot) {
+        case 1:
+        case 14:
+            return "A";
+        case 11:
+            return "J";
+        case 12:
+            return "Q";
+        case 13:
+            return "K";
+        default:
+            return std::to_string(slot);
     }
-    put(v, c0, r1, 0xC8, FIELD);
-    for (int c = c0 + 1; c < c1; ++c) put(v, c, r1, 0xCD, FIELD);
-    put(v, c1, r1, 0xBC, FIELD);
+}
+
+inline std::string meldRange(const Meld& m) {
+    const int lo = m.lowSlot(), hi = m.highSlot();
+    std::string s;
+    s += buraco::suitGlyphFor(m.suit);
+    s += ' ';
+    s += slotName(lo);
+    if (hi != lo) {
+        s += '-';
+        s += slotName(hi);
+    }
+    return s;
+}
+
+inline const char* meldBonusTag(const Meld& m) {
+    if (m.realCanastra()) return "real+500";
+    if (m.canastra()) return m.dirty ? "c+100" : "c+200";
+    return "";
+}
+
+// Right-aligned number inside one 37-column score column.
+inline void scoreNumber(dos::Video& v, int col, int row, int value, bool plus,
+                        uint8_t attr) {
+    char buf[24];
+    if (plus && value > 0)
+        std::snprintf(buf, sizeof buf, "+%d", value);
+    else
+        std::snprintf(buf, sizeof buf, "%d", value);
+    puts(v, col + 36 - int(std::strlen(buf)), row, buf, attr);
+}
+
+inline void drawScoreColumn(dos::Video& v, const Game& g, int seat, int col) {
+    const auto& p = g.player(seat);
+    char buf[80];
+
+    puts(v, col, 2, p.name, FIELD);
+    std::snprintf(buf, sizeof buf, "acum %d", p.total);
+    puts(v, col + 36 - int(std::strlen(buf)), 2, buf, DIM);
+
+    int row = 3;
+    int meldTotal = 0;
+    int shown = 0;
+    for (const Meld& m : p.melds) {
+        if (m.empty()) continue;
+        ++shown;
+        const int pts = m.value();
+        meldTotal += pts;
+
+        std::snprintf(buf, sizeof buf, "Jogo %2d %s", shown, meldRange(m).c_str());
+        puts(v, col, row, buf, FIELD);
+        const char* tag = meldBonusTag(m);
+        if (*tag) {
+            const bool dirty = m.dirty && !m.realCanastra();
+            puts(v, col + 18, row, tag, dirty ? WILD : DIM);
+        }
+        scoreNumber(v, col, row, pts, false, FIELD);
+        ++row;
+    }
+    if (shown == 0) puts(v, col, row, "(nenhum jogo)", DIM);
+
+    int handPts = 0;
+    for (const Card& c : p.hand) handPts += buraco::cardPoints(c);
+    const int batida = seat == g.lastWentOutSeat() ? 100 : 0;
+    const int morto = p.tookMorto ? 0 : -100;
+    const int total = meldTotal + batida - handPts + morto;
+
+    puts(v, col, 18, "Jogos", FIELD);
+    scoreNumber(v, col, 18, meldTotal, false, FIELD);
+    puts(v, col, 19, "Batida", batida ? FIELD : DIM);
+    scoreNumber(v, col, 19, batida, true, batida ? FIELD : DIM);
+    puts(v, col, 20, "Cartas na mao", FIELD);
+    scoreNumber(v, col, 20, -handPts, false, FIELD);
+    puts(v, col, 21, "Morto", morto ? FIELD : DIM);
+    scoreNumber(v, col, 21, morto, false, morto ? FIELD : DIM);
+    puts(v, col, 22, "Total da mao", FIELD);
+    scoreNumber(v, col, 22, total, false, FIELD);
+}
+
+inline void drawHandOver(dos::Video& v, const Game& g) {
+    // The score screen takes over the whole 80x25 display so every meld of
+    // both players fits (up to 15 melds each).
+    for (int r = 0; r < ROWS; ++r)
+        for (int c = 0; c < COLS; ++c) put(v, c, r, ' ', FIELD);
+
+    const int r0 = 1, r1 = 23;
+    put(v, 0, r0, 0xC9, FIELD);
+    for (int c = 1; c < COLS - 1; ++c) put(v, c, r0, 0xCD, FIELD);
+    put(v, COLS - 1, r0, 0xBB, FIELD);
+    for (int r = r0 + 1; r < r1; ++r) {
+        put(v, 0, r, 0xBA, FIELD);
+        put(v, COLS - 1, r, 0xBA, FIELD);
+    }
+    put(v, 0, r1, 0xC8, FIELD);
+    for (int c = 1; c < COLS - 1; ++c) put(v, c, r1, 0xCD, FIELD);
+    put(v, COLS - 1, r1, 0xBC, FIELD);
+    for (int r = r0 + 1; r < r1; ++r) put(v, 39, r, 0xBA, FIELD);
 
     char buf[80];
-    puts(v, c0 + 4, r0 + 1, "Vamos contar os pontos.", FIELD);
-    std::snprintf(buf, sizeof buf, "%-8s %6d", g.player(0).name.c_str(),
-                  g.player(0).lastHandPoints);
-    puts(v, c0 + 4, r0 + 3, buf, FIELD);
-    std::snprintf(buf, sizeof buf, "%-8s %6d", g.player(1).name.c_str(),
-                  g.player(1).lastHandPoints);
-    puts(v, c0 + 4, r0 + 4, buf, FIELD);
-    std::snprintf(buf, sizeof buf, "total %d x %d", g.player(0).total, g.player(1).total);
-    puts(v, c0 + 4, r0 + 5, buf, DIM);
-    puts(v, c0 + 4, r0 + 6, "ENTER para continuar", WILD);
+    std::snprintf(buf, sizeof buf, "CONTAGEM DE PONTOS   mao %d", g.handNumber());
+    puts(v, 2, 0, buf, FIELD);
+
+    drawScoreColumn(v, g, 0, 2);
+    drawScoreColumn(v, g, 1, 41);
+
+    puts(v, 2, ROWS - 1, "ENTER para continuar", WILD);
 }
 
 inline void drawHelp(dos::Video& v) {

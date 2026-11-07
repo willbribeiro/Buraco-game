@@ -58,6 +58,7 @@ public:
     const Card& lastDrawn() const { return lastDrawn_; }
     bool matchOver() const { return phase_ == Phase::MatchOver; }
     int handNumber() const { return handNumber_; }
+    int lastWentOutSeat() const { return lastWentOutSeat_; }
     uint32_t rng() const { return rng_; }
 
     void setMessage(const std::string& m) { message_ = m; }

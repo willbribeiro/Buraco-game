@@ -59,6 +59,10 @@ Baixas e canastras no porte:
 
 ![jogos no porte](shots/50_port_melds.png)
 
+Contagem de pontos, jogo por jogo, com bônus e descontos:
+
+![contagem de pontos](shots/60_port_score.png)
+
 ## O que já está pronto
 
 * Baralho de 108 cartas (2 baralhos + 4 curingas), distribuição 11/11,
@@ -68,8 +72,10 @@ Baixas e canastras no porte:
   aumentar um jogo aceita qualquer número de cartas (até uma).
 * Curingas preenchendo buracos internos e estendendo o topo.
 * Pegar o morto (11 + 11), penalidade de −100 para quem nunca pegou.
-* Bater (200 baixando / 100 descartando), exigência de canastra,
-  canastra limpa +200 / suja +100, partida até 3.000 pontos com várias mãos.
+* Bater (+100 fixo) com exigência de canastra; canastra limpa +200 / suja
+  +100 / real +500, partida até 3.000 pontos com várias mãos.
+* Tela de contagem detalhada: cada jogo baixado com seus pontos, soma dos
+  jogos, batida, cartas na mão e morto, e o total da mão.
 * Fonte VGA 8×16 autêntica (256 glifos × 16 bytes) extraída de uma run do
   `ALLCHARS.COM` no DOSBox-X.
 * Modo *headless* determinístico (`--auto`, `--script`, `--check`,

@@ -21,8 +21,9 @@ extraída do próprio jogo).
 | Escolher entre aumentar um jogo existente ou baixar um novo do mesmo naipe | ✅ |
 | Curingas (2 e joker) preenchendo buracos e topo | ✅ |
 | Pegar o morto (11 + 11), penalidade de −100 | ✅ |
-| Bater (200 baixando / 100 descartando), exigir canastra | ✅ |
-| Contagem de pontos, canastra limpa +200 / suja +100 | ✅ |
+| Bater (+100 fixo), exigir canastra | ✅ |
+| Contagem de pontos, canastra limpa +200 / suja +100 / real +500 | ✅ |
+| Tela de contagem jogo por jogo, com soma, bônus e descontos | ✅ |
 | Partida até 3.000 pontos, várias mãos | ✅ |
 | Sorteio diferente a cada nova partida | ✅ |
 | Fonte VGA 8×16 autêntica extraída do DOSBox-X | ✅ |
@@ -182,10 +183,13 @@ Constantes recuperadas de `FUN_1000_1920` (réguas e divisória) e de
   (o novo jogo é que precisa de ≥3).
 * Comprar a mesa leva **todas** as cartas do descarte, não só a última; a
   última carta comprada vira `lastDrawn_` e é a primeira que a IA tenta baixar.
-* Canastra: ≥7 cartas → +200 limpa, +100 suja (com curinga).
-* Bater: mão vazia com canastra; +200 se baixou tudo na fase de jogos, +100 se
-  foi no descarte (confirmado em `FUN_1000_30bf`: `0xBF0 = 1`, bônus 200 quando
-  `0x27B == 2`, senão 100).
+* Canastra: ≥7 cartas → +200 limpa, +100 suja (com curinga). Canastra real
+  (sequência completa A–K do mesmo naipe, sem curinga, valendo 500 no total em
+  vez de 200) → +500. Nela o 2 do naipe conta como carta natural, já que o 2 é
+  curinga nos demais jogos.
+* Bater: mão vazia com canastra; +100 fixo, tanto baixando todas as cartas
+  quanto descartando a última. (O executável original dava 200 ao baixar tudo;
+  o porte segue a regra atual do projeto.)
 * Morto: 22 cartas; quem esvazia a mão pega 11; quem nunca pegou perde 100.
 * Monte vazio: o original sorteia a carta 0 e o jogador não compra nada
   (`FUN_1000_2a03` devolve 0 quando os 108 slots estão vazios) — a mão encolhe
@@ -245,4 +249,5 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
   existente.
 * `work/x.txt` (`--script`) contém 5 mãos completas com placar, morto e
   canastras; `work/auto.txt` roda 4.000 fases sem travar.
-* Capturas do porte: `shots/50_port_melds.png`, `shots/52_port_melds.png`.
+* Capturas do porte: `shots/50_port_melds.png`, `shots/52_port_melds.png`,
+  `shots/60_port_score.png` (tela de contagem detalhada).

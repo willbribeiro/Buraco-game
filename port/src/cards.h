@@ -96,8 +96,14 @@ struct Meld {
 
     int size() const;
     int points() const;   // sum of card values, no canastra bonus
-    int value() const;    // points + 200 clean canastra / 100 dirty canastra
+    int value() const;    // points + 500 real / 200 clean / 100 dirty canastra
     bool canastra() const { return size() >= CANASTRA_LEN; }
+
+    // Real canastra: the complete A..K run of one suit with no wildcard.
+    // The 2 is wild in a normal meld, but inside a real canastra the 2 of the
+    // meld suit counts as its natural rank (A,2,...,K), which is the only way
+    // the full run can exist in this deck.
+    bool realCanastra() const;
 
     // Lowest/highest occupied slot (0 when the meld is empty).
     int lowSlot() const;

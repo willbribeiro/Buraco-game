@@ -86,9 +86,27 @@ int Meld::points() const {
     return sum;
 }
 
+bool Meld::realCanastra() const {
+    if (suit == 0) return false;
+
+    // Slots 1..13 must hold A,2,3,...,K of the meld suit.  For slot 2 that
+    // means a natural 2 of the suit even though 2s are wildcards elsewhere.
+    for (int i = 1; i <= 13; ++i) {
+        const Card& c = slot[i];
+        if (!c.valid() || c.suit != suit || c.rank != uint8_t(i)) return false;
+    }
+    // Nothing may sit above the king (an ace-high copy or a wildcard).
+    for (int i = 14; i <= 15; ++i)
+        if (slot[i].valid()) return false;
+    return true;
+}
+
 int Meld::value() const {
     int v = points();
-    if (canastra()) v += dirty ? 100 : 200;
+    if (realCanastra())
+        v += 500;
+    else if (canastra())
+        v += dirty ? 100 : 200;
     return v;
 }
 

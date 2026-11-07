@@ -317,7 +317,9 @@ void Game::endHand(bool /*playerWentOut*/, bool /*playerWonByMeld*/) {
     morto_.clear();
 
     const int bonusSeat = lastWentOutSeat_;
-    const int bonus = lastWentOutByMeld_ ? 200 : 100;
+    // Batida is a flat +100 for whoever went out, whether by laying every card
+    // as a meld or by discarding the last one.
+    const int bonus = 100;
 
     for (int seat = 0; seat < 2; ++seat) {
         PlayerState& p = players_[seat];
