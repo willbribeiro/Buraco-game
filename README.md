@@ -112,7 +112,7 @@ separada e substituível (`ui::*`) que encaminha para SDL2.
 
 ## Notas
 
-* `BURACO.EXE` está neste repositório apenas como material de referência.
+* O executável original `BURACO.EXE` não é distribuído neste repositório.
   Todos os direitos do jogo original pertencem aos seus donos.
 * Run de referência para a régua da fonte: veja `tools/UNPACK.md` e
   `work/ghidra/out/decompiled.c` (funções `FUN_1000_1920`, `FUN_1000_258a`,
