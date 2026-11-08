@@ -61,6 +61,18 @@ public:
     int lastWentOutSeat() const { return lastWentOutSeat_; }
     uint32_t rng() const { return rng_; }
 
+    // Match statistics shown by F3.  `handsPlayed` counts the hands that were
+    // already scored (the hand in progress is not counted yet); `wins` counts
+    // who emptied their hand in each of those hands.
+    int handsPlayed() const { return handsPlayed_; }
+    int wins(int seat) const { return wins_[seat]; }
+    int meldCount(int seat) const {
+        int n = 0;
+        for (const Meld& m : players_[seat].melds)
+            if (!m.empty()) ++n;
+        return n;
+    }
+
     void setMessage(const std::string& m) { message_ = m; }
 
     // ---- persistence (F2 / F5) -------------------------------------------
@@ -156,6 +168,8 @@ private:
     Prompt prompt_ = Prompt::None;
     int current_ = 0;
     int handNumber_ = 0;
+    int handsPlayed_ = 0;
+    int wins_[2] = {0, 0};
     uint32_t rng_ = 1;
     double timer_ = 0.0;
     bool lastWentOutByMeld_ = false;

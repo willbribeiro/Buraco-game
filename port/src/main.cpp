@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -22,10 +23,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <istream>
 #include <iterator>
+#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -810,6 +813,11 @@ constexpr int COL_MELD_L = 1;
 constexpr int COL_MELD_R = 41;
 
 struct UiState {
+    // Screens shown before the actual game starts.  Headless/batch modes keep
+    // the default `Game` so the historical scripts still start with ENTER.
+    enum class Screen { Game, Intro, ContinuePrompt, NameEntry };
+    Screen screen = Screen::Game;
+
     int cursor = 0;
     int meldScroll = 0;   // first meld row shown in the table panel
     std::vector<bool> selected;
@@ -820,6 +828,12 @@ struct UiState {
     bool layChoice = false;
     int layTarget = -1;
     std::vector<Card> layCards;
+
+    // Startup flow.
+    std::string inputName;    // name being typed on the NameEntry screen
+    std::string promptSave;   // save file offered on the ContinuePrompt screen
+    std::string promptName;   // player name read from that save file
+    std::string inputError;   // validation message shown under the name field
 };
 
 inline void put(dos::Video& v, int col, int row, uint8_t ch, uint8_t attr) {
@@ -1048,10 +1062,35 @@ inline void drawHand(dos::Video& v, const Game& g, const UiState& ui) {
     if (last < int(p.hand.size()) - 1) put(v, 79, ROW_HAND, '>', DIM);
 }
 
-inline void drawStatus(dos::Video& v, const Game& g) {
-    const int r0 = 9, r1 = 14, c0 = 20, c1 = 60;
-    for (int r = r0; r <= r1; ++r)
-        for (int c = c0; c <= c1; ++c) put(v, c, r, ' ', FIELD);
+// Splits a paragraph into lines of at most `width` columns, breaking on
+// spaces.  The screens are written in CP437 bytes, so a byte count is enough.
+inline std::vector<std::string> wrapText(const std::string& text, int width) {
+    std::vector<std::string> lines;
+    if (text.empty()) {
+        lines.emplace_back();
+        return lines;
+    }
+    size_t start = 0;
+    while (start < text.size()) {
+        if (text.size() - start <= size_t(width)) {
+            lines.push_back(text.substr(start));
+            break;
+        }
+        size_t cut = start + size_t(width);
+        size_t space = text.rfind(' ', cut);
+        if (space == std::string::npos || space < start) space = cut;
+        lines.push_back(text.substr(start, space - start));
+        start = space;
+        while (start < text.size() && text[start] == ' ') ++start;
+    }
+    return lines;
+}
+
+// Full-screen framed text panel shared by the intro, the F1 help and F3.
+inline void drawTextBox(dos::Video& v, const char* title,
+                        const std::vector<std::string>& paragraphs) {
+    clear(v);
+    const int c0 = 1, c1 = 78, r0 = 1, r1 = 23;
     put(v, c0, r0, 0xC9, FIELD);
     for (int c = c0 + 1; c < c1; ++c) put(v, c, r0, 0xCD, FIELD);
     put(v, c1, r0, 0xBB, FIELD);
@@ -1063,16 +1102,51 @@ inline void drawStatus(dos::Video& v, const Game& g) {
     for (int c = c0 + 1; c < c1; ++c) put(v, c, r1, 0xCD, FIELD);
     put(v, c1, r1, 0xBC, FIELD);
 
-    puts(v, c0 + 3, r0 + 1, "SITUACAO GERAL", FIELD);
-    char buf[80];
-    std::snprintf(buf, sizeof buf, "%-8s  pontos %5d", g.player(0).name.c_str(),
-                  g.player(0).total);
-    puts(v, c0 + 3, r0 + 2, buf, FIELD);
-    std::snprintf(buf, sizeof buf, "%-8s  pontos %5d", g.player(1).name.c_str(),
-                  g.player(1).total);
-    puts(v, c0 + 3, r0 + 3, buf, FIELD);
-    std::snprintf(buf, sizeof buf, "mao %d   meta %d", g.handNumber(), g.targetScore());
-    puts(v, c0 + 3, r0 + 4, buf, DIM);
+    int row = r0 + 1;
+    for (const std::string& p : paragraphs) {
+        for (const std::string& line : wrapText(p, c1 - c0 - 3)) {
+            if (row >= r1) break;
+            puts(v, c0 + 2, row, line, FIELD);
+            ++row;
+        }
+        if (row >= r1) break;
+    }
+    puts(v, 0, 0, title, DIM);
+}
+
+// F3: the general situation, exactly in the wording of the original game.
+inline void drawStatus(dos::Video& v, const Game& g) {
+    char buf[256];
+    std::vector<std::string> lines;
+    lines.push_back("A situacao do jogo ate aqui:");
+    lines.push_back(g.player(0).name + ",");
+    // CP437 0xA0 is the accented 'a' used by the original text ("já").
+    std::snprintf(buf, sizeof buf,
+                  "nos j%c %d partidas das quais voce ganhou %d e eu ganhou %d.",
+                  char(0xA0), g.handsPlayed(), g.wins(0), g.wins(1));
+    lines.push_back(buf);
+    std::snprintf(buf, sizeof buf,
+                  "Na ultima partida voce fez %d, e eu fiz %d.",
+                  g.player(0).lastHandPoints, g.player(1).lastHandPoints);
+    lines.push_back(buf);
+    std::snprintf(buf, sizeof buf,
+                  "Ate agora voce ja fez %d pontos e eu fiz %d.",
+                  g.player(0).total, g.player(1).total);
+    lines.push_back(buf);
+    lines.push_back("Estamos no meio de uma partida.");
+    std::snprintf(buf, sizeof buf, "Voce tem %d cartas na mao, e eu tenho %d.",
+                  int(g.player(0).hand.size()), int(g.player(1).hand.size()));
+    lines.push_back(buf);
+    std::snprintf(buf, sizeof buf, "Voce ja baixou %d jogos e eu %d.",
+                  g.meldCount(0), g.meldCount(1));
+    lines.push_back(buf);
+    std::snprintf(buf, sizeof buf, "Na mesa ha %d cartas.",
+                  int(g.discardPile().size()));
+    lines.push_back(buf);
+    std::snprintf(buf, sizeof buf, "No monte ha %d cartas.", int(g.monte().size()));
+    lines.push_back(buf);
+    lines.push_back("...agora aperte ENTER");
+    drawTextBox(v, "BURACO - situacao geral", lines);
 }
 
 // Compact name for a meld slot (1..13, plus the ace-high slot 14).
@@ -1198,52 +1272,76 @@ inline void drawHandOver(dos::Video& v, const Game& g) {
     puts(v, 2, ROWS - 1, "ENTER para continuar", WILD);
 }
 
+// The text of the initial screen, also shown by F1.  Each entry is one
+// paragraph; drawTextBox wraps them to the width of the panel.
 inline void drawHelp(dos::Video& v) {
     static const char* kLines[] = {
         "Vamos jogar buraco ?",
         "",
         "Durante o jogo, voce pode responder minhas perguntas com \"S\" ou \"N\".",
         "As flechas para esquerda e direita servem para escolher as suas cartas.",
-        "Quando voce tiver escolhido, aperte a barra de espacos para que eu",
-        "saiba qual carta voce escolheu. Se voce nao quizer mais esta carta,",
-        "aperte a barra novamente. Para baixar um jogo novo, escolha pelo menos",
-        "tres cartas e aperte ENTER. Para aumentar um jogo, escolha uma ou mais",
-        "cartas. Para descartar, aperte ENTER sem ter escolhido nenhuma carta.",
-        "Se ja houver um jogo do mesmo naipe, eu pergunto se voce quer aumentar",
-        "o jogo ou baixar um novo.",
-        "",
+        "Quando voce tiver escolhido, aperte a barra de espacos para que eu saiba "
+        "qual carta voce escolheu. Se voce nao quizer mais esta carta, aperte a "
+        "barra novamente. Para baixar um jogo, escolha algumas cartas e no fim "
+        "aperte ENTER. Para descartar, aperte ENTER sem ter escolhido nenhuma "
+        "carta.",
         "As flechas para cima e para baixo mostram os jogos que estao na mesa.",
-        "Os jogos dos dois jogadores ficam sempre visiveis.",
         "Para ver esta tela, aperte F1.",
+        "Para gravar o jogo e continuar depois, aperte F2.",
         "Para ver a situacao geral do jogo, aperte F3.",
-        "Para gravar o jogo aperte F2; para restaurar, F5.",
-        "",
         "Boa sorte!",
         "",
-        "               ...agora aperte <ENTER>",
+        "...agora aperte ENTER",
     };
-    for (int r = 1; r <= 23; ++r)
-        for (int c = 1; c <= 78; ++c) put(v, c, r, ' ', FIELD);
-    put(v, 1, 1, 0xC9, FIELD);
-    for (int c = 2; c < 78; ++c) put(v, c, 1, 0xCD, FIELD);
-    put(v, 78, 1, 0xBB, FIELD);
-    for (int r = 2; r < 23; ++r) {
-        put(v, 1, r, 0xBA, FIELD);
-        put(v, 78, r, 0xBA, FIELD);
-    }
-    put(v, 1, 23, 0xC8, FIELD);
-    for (int c = 2; c < 78; ++c) put(v, c, 23, 0xCD, FIELD);
-    put(v, 78, 23, 0xBC, FIELD);
+    std::vector<std::string> paragraphs;
+    for (const char* line : kLines) paragraphs.emplace_back(line);
+    drawTextBox(v, "BURACO - ajuda", paragraphs);
+}
 
-    int row = 2;
-    for (const char* line : kLines) {
-        puts(v, 3, row, line, FIELD);
-        ++row;
+// Asked right after the intro when a save file was found in the game folder.
+inline void drawContinuePrompt(dos::Video& v, const std::string& saveFile,
+                               const std::string& playerName) {
+    std::vector<std::string> lines;
+    lines.push_back("Encontrei um jogo gravado:");
+    lines.push_back(saveFile);
+    if (!playerName.empty()) lines.push_back("Jogador: " + playerName);
+    lines.push_back("");
+    lines.push_back("Continuar o jogo (S) ou criar um novo (N)?");
+    drawTextBox(v, "BURACO - jogo gravado", lines);
+}
+
+// Asked for a new game: the typed name becomes the save file name.
+inline void drawNameEntry(dos::Video& v, const std::string& input,
+                          const std::string& error) {
+    std::vector<std::string> lines;
+    lines.push_back("Qual o seu nome?");
+    lines.push_back("");
+    lines.push_back("> " + input + "_");
+    lines.push_back("");
+    lines.push_back("O nome digitado sera o nome do arquivo de progresso.");
+    lines.push_back("ENTER confirma.  ESC volta a tela inicial.");
+    if (!error.empty()) {
+        lines.push_back("");
+        lines.push_back(error);
     }
-    puts(v, 1, 0, "BURACO - ajuda", DIM);
+    drawTextBox(v, "BURACO - novo jogo", lines);
 }
 
 inline void draw(dos::Video& v, const Game& g, const UiState& ui) {
+    switch (ui.screen) {
+        case UiState::Screen::Intro:
+            drawHelp(v);
+            return;
+        case UiState::Screen::ContinuePrompt:
+            drawContinuePrompt(v, ui.promptSave, ui.promptName);
+            return;
+        case UiState::Screen::NameEntry:
+            drawNameEntry(v, ui.inputName, ui.inputError);
+            return;
+        case UiState::Screen::Game:
+            break;
+    }
+
     clear(v);
     hrule(v, ROW_RULE1, 0xC4, FIELD);
     hrule(v, ROW_RULE2, 0xC4, FIELD);
@@ -1271,11 +1369,118 @@ inline void draw(dos::Video& v, const Game& g, const UiState& ui) {
 // ---------------------------------------------------------------------------
 namespace save {
 
+namespace fs = std::filesystem;
+
 // Default is a file next to the working directory; --save overrides it (used by
 // the headless regression scripts so they never clobber a real save).
 std::string& path() {
     static std::string p = "buraco.sav";
     return p;
+}
+
+// `--save <file>` also points the discovery at that file's folder, so the
+// startup flow can be exercised against a scratch directory.
+std::string& dirOverride() {
+    static std::string d;
+    return d;
+}
+
+// The game folder: saves live next to buraco.exe, which is what "a pasta do
+// jogo" means for the player.  SDL_GetBasePath() works before SDL_Init().
+fs::path dir() {
+    if (!dirOverride().empty()) return fs::path(dirOverride());
+    char* base = SDL_GetBasePath();
+    if (base) {
+        fs::path p(base);
+        SDL_free(base);
+        return p;
+    }
+    return fs::current_path();
+}
+
+bool looksLikeSave(const fs::path& file) {
+    std::ifstream f(file, std::ios::binary);
+    std::string line;
+    if (!std::getline(f, line)) return false;
+    return line.rfind("BURACO-SAVE", 0) == 0;
+}
+
+// Most recently written progress file in the game folder, if any.
+std::optional<fs::path> findLatestSave() {
+    std::error_code ec;
+    std::optional<fs::path> best;
+    fs::file_time_type bestTime{};
+    for (const auto& entry : fs::directory_iterator(dir(), ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file(ec) || ec) continue;
+        const fs::path& file = entry.path();
+        if (file.extension() != ".sav") continue;
+        if (!looksLikeSave(file)) continue;
+        const fs::file_time_type t = fs::last_write_time(file, ec);
+        if (ec) continue;
+        if (!best || t > bestTime) {
+            best = file;
+            bestTime = t;
+        }
+    }
+    return best;
+}
+
+// Reads the human player's name from a save file (used only to label the
+// "continue?" prompt; a malformed file simply yields an empty name).
+std::string savedPlayerName(const fs::path& file) {
+    std::ifstream f(file, std::ios::binary);
+    std::string line;
+    while (std::getline(f, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
+            line.pop_back();
+        if (line.rfind("name 0 ", 0) == 0) return line.substr(7);
+    }
+    return {};
+}
+
+// A player name must be usable as a Windows file name.
+std::string sanitizeName(const std::string& raw) {
+    std::string out;
+    for (unsigned char c : raw) {
+        if (c < 32 || c == 127) continue;
+        if (std::strchr("<>:\"/\\|?*", c))
+            out += '_';
+        else
+            out += char(c);
+    }
+    while (!out.empty() && (out.front() == ' ' || out.front() == '.'))
+        out.erase(out.begin());
+    while (!out.empty() && (out.back() == ' ' || out.back() == '.'))
+        out.pop_back();
+    if (out.empty()) out = "JOGADOR";
+    if (out.size() > 60) out.resize(60);
+
+    // CON, NUL, COM1... are reserved device names on Windows.
+    std::string upper = out;
+    for (char& c : upper) c = char(std::toupper(uint8_t(c)));
+    static const char* kReserved[] = {"CON", "PRN", "AUX", "NUL"};
+    for (const char* r : kReserved)
+        if (upper == r) out += '_';
+    if (upper.size() == 4 &&
+        (upper.rfind("COM", 0) == 0 || upper.rfind("LPT", 0) == 0) &&
+        upper[3] >= '1' && upper[3] <= '9')
+        out += '_';
+    return out;
+}
+
+// `<name>.sav`, or `<name>2.sav`, `<name>3.sav`, ... when the name is taken.
+std::string uniquePathForName(const std::string& rawName) {
+    const std::string base = sanitizeName(rawName);
+    const fs::path folder = dir();
+    std::error_code ec;
+    fs::path candidate = folder / (base + ".sav");
+    if (!fs::exists(candidate, ec)) return candidate.string();
+    for (int n = 2; n < 100000; ++n) {
+        candidate = folder / (base + std::to_string(n) + ".sav");
+        if (!fs::exists(candidate, ec)) return candidate.string();
+    }
+    return (folder / (base + "_overflow.sav")).string();
 }
 
 }  // namespace save
@@ -1346,8 +1551,9 @@ static std::string stateLine(const buraco::Game& g) {
             s += "]";
         }
     }
-    std::snprintf(buf, sizeof buf, "| pts %d x %d| h%d\n", g.player(0).total,
-                  g.player(1).total, g.handNumber());
+    std::snprintf(buf, sizeof buf, "| pts %d x %d| h%d| stats %d/%d/%d\n",
+                  g.player(0).total, g.player(1).total, g.handNumber(),
+                  g.handsPlayed(), g.wins(0), g.wins(1));
     s += buf;
     return s;
 }
@@ -1465,6 +1671,8 @@ int main(int argc, char** argv) {
     int checkSteps = 0;
     int saveTestSteps = 0;
     bool guiAfterAuto = false;
+    bool savePathSet = false;
+    bool flowTest = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -1474,8 +1682,19 @@ int main(int argc, char** argv) {
         else if (a == "--auto" && i + 1 < argc) autoSteps = std::atoi(argv[++i]);
         else if (a == "--check" && i + 1 < argc) checkSteps = std::atoi(argv[++i]);
         else if (a == "--savetest" && i + 1 < argc) saveTestSteps = std::atoi(argv[++i]);
-        else if (a == "--save" && i + 1 < argc) save::path() = argv[++i];
-        else if (a == "--gui") guiAfterAuto = true;
+        else if (a == "--save" && i + 1 < argc) {
+            save::path() = argv[++i];
+            savePathSet = true;
+            const std::filesystem::path sp(save::path());
+            save::dirOverride() =
+                sp.has_parent_path() ? sp.parent_path().string() : std::string(".");
+        } else if (a == "--savedir" && i + 1 < argc) {
+            save::dirOverride() = argv[++i];
+        } else if (a == "--flow") {
+            flowTest = true;
+        } else if (a == "--gui") {
+            guiAfterAuto = true;
+        }
     }
     bool headless = (!scriptPath.empty() || autoSteps > 0) && !guiAfterAuto;
     // Every batch mode (script, auto, check, savetest) keeps the historical
@@ -1487,9 +1706,23 @@ int main(int argc, char** argv) {
     video.setMode(0x03);
     video.cursorVisible = false;  // the port draws its own marker on row 17
 
+    // `--auto ... --gui` is a screenshot/demo mode: it skips the startup flow
+    // just like the headless modes.  A plain interactive run starts on the
+    // intro screen and only deals after the player picks "continue" or types
+    // a name.
+    const bool demo = guiAfterAuto && autoSteps > 0;
+    // --flow lets a headless --script replay exercise the intro/name/continue
+    // screens without opening a window.
+    const bool flowMode = flowTest && !scriptPath.empty() && autoSteps == 0;
+    const bool interactiveStart = flowMode || (!batch && !demo);
+
     buraco::Game game;
     ui::UiState ui;
-    game.newMatch("JOGADOR", seed ? seed : (batch ? 1234u : makeSeed()));
+    if (interactiveStart) {
+        ui.screen = ui::UiState::Screen::Intro;
+    } else {
+        game.newMatch("JOGADOR", seed ? seed : (batch ? 1234u : makeSeed()));
+    }
     bool started = false;
     bool running = true;
 
@@ -1503,6 +1736,81 @@ int main(int argc, char** argv) {
 
     auto key = [&](SDL_Keycode sym) {
         using buraco::Phase;
+        using Screen = ui::UiState::Screen;
+
+        // ---- startup flow -------------------------------------------------
+        if (ui.screen == Screen::Intro) {
+            if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
+                const std::optional<std::filesystem::path> found = save::findLatestSave();
+                if (found) {
+                    ui.promptSave = found->string();
+                    ui.promptName = save::savedPlayerName(*found);
+                    ui.screen = Screen::ContinuePrompt;
+                } else {
+                    ui.inputName.clear();
+                    ui.inputError.clear();
+                    ui.screen = Screen::NameEntry;
+                }
+            } else if (sym == SDLK_ESCAPE) {
+                running = false;
+            }
+            return;
+        }
+
+        if (ui.screen == Screen::ContinuePrompt) {
+            if (sym == SDLK_s || sym == SDLK_y || sym == SDLK_RETURN ||
+                sym == SDLK_KP_ENTER) {
+                if (game.loadFrom(ui.promptSave)) {
+                    save::path() = ui.promptSave;
+                    started = true;
+                    ui.help = false;
+                    ui.status = false;
+                    ui.screen = Screen::Game;
+                    resetSelection();
+                    game.setMessage("Jogo restaurado.");
+                } else {
+                    ui.inputName.clear();
+                    ui.inputError = "Nao consegui ler o jogo gravado. Digite um nome.";
+                    ui.screen = Screen::NameEntry;
+                }
+            } else if (sym == SDLK_n) {
+                ui.inputName.clear();
+                ui.inputError.clear();
+                ui.screen = Screen::NameEntry;
+            } else if (sym == SDLK_ESCAPE) {
+                running = false;
+            }
+            return;
+        }
+
+        if (ui.screen == Screen::NameEntry) {
+            if (sym == SDLK_BACKSPACE) {
+                if (!ui.inputName.empty()) ui.inputName.pop_back();
+            } else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
+                if (ui.inputName.empty()) {
+                    ui.inputError = "Digite um nome antes de continuar.";
+                    return;
+                }
+                const std::string name = ui.inputName;
+                if (!savePathSet) save::path() = save::uniquePathForName(name);
+                game.newMatch(name, seed ? seed : makeSeed());
+                started = true;
+                ui.help = false;
+                ui.status = false;
+                ui.screen = Screen::Game;
+                ui.inputError.clear();
+                resetSelection();
+            } else if (sym == SDLK_ESCAPE) {
+                ui.inputName.clear();
+                ui.inputError.clear();
+                ui.screen = Screen::Intro;
+            } else if (batch && sym >= 32 && sym < 127) {
+                if (ui.inputName.size() < 40) ui.inputName += char(sym);
+            }
+            return;
+        }
+
+        // ---- normal game --------------------------------------------------
         // Persistence works in every screen, including before the deal, so a
         // match can be restored without starting a fresh one.
         if (sym == SDLK_F2) {
@@ -1516,6 +1824,7 @@ int main(int argc, char** argv) {
             if (game.loadFrom(save::path())) {
                 started = true;
                 ui.help = false;
+                ui.status = false;
                 resetSelection();
                 game.setMessage("Jogo restaurado.");
             } else {
@@ -1535,6 +1844,13 @@ int main(int argc, char** argv) {
             if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER || sym == SDLK_F1 ||
                 sym == SDLK_ESCAPE)
                 ui.help = false;
+            return;
+        }
+        if (ui.status) {
+            // F3 is a full screen ending in "...agora aperte ENTER".
+            if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER || sym == SDLK_F3 ||
+                sym == SDLK_F4 || sym == SDLK_ESCAPE)
+                ui.status = false;
             return;
         }
 
@@ -1571,7 +1887,9 @@ int main(int argc, char** argv) {
         }
         if (game.phase() == Phase::MatchOver) {
             if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
-                game.newMatch("JOGADOR", seed ? seed : makeSeed());
+                const std::string name =
+                    game.player(0).name.empty() ? "JOGADOR" : game.player(0).name;
+                game.newMatch(name, seed ? seed : makeSeed());
                 resetSelection();
             }
             return;
@@ -1868,6 +2186,7 @@ int main(int argc, char** argv) {
         }
 
         resetSelection();
+        ui::draw(video, game, ui);
         dumpScreen(video, out, "start");
         char line[128];
         int step = 0;
@@ -1924,6 +2243,13 @@ int main(int argc, char** argv) {
                 running = false;
             } else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 key(e.key.keysym.sym);
+            } else if (e.type == SDL_TEXTINPUT &&
+                       ui.screen == ui::UiState::Screen::NameEntry) {
+                for (const char* p = e.text.text; *p; ++p) {
+                    const unsigned char c = static_cast<unsigned char>(*p);
+                    if (c >= 32 && c != 127 && ui.inputName.size() < 40)
+                        ui.inputName += char(c);
+                }
             }
         }
 

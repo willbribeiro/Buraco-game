@@ -45,8 +45,10 @@ Os scripts de build detalhados usam *MinGW-w64 GCC 16.2.0 (UCRT, POSIX, SEH)*,
 | `ENTER` (compra) | compra do monte (`S`/`N` compra a mesa inteira) |
 | `ENTER` (jogo) | baixa as cartas marcadas; sem marcação → descarte |
 | `A` / `N` | aumenta o jogo existente ou baixa um novo do mesmo naipe |
-| `F1` / `F3` | ajuda / situação geral |
-| `F2` / `F5` | grava (`buraco.sav`) / restaura partida |
+| `ENTER` (tela inicial) | continua o save encontrado ou pede o nome do jogador |
+| `S` / `N` | continua o jogo gravado (`S`) ou cria um novo (`N`) |
+| `F1` / `F3` | ajuda / situação geral em tela cheia |
+| `F2` / `F5` | grava (`<nome>.sav`) / restaura partida |
 | `ESC` | limpa a seleção; sem seleção, encerra |
 
 ## Capturas
@@ -76,10 +78,15 @@ Contagem de pontos, jogo por jogo, com bônus e descontos:
   +100 / real +500, partida até 3.000 pontos com várias mãos.
 * Tela de contagem detalhada: cada jogo baixado com seus pontos, soma dos
   jogos, batida, cartas na mão e morto, e o total da mão.
+* Tela inicial com o texto de apresentação; depois do `ENTER`, o jogo procura
+  um progresso gravado na pasta do jogo e pergunta se o jogador quer continuar
+  ou começar um novo. No jogo novo, o nome digitado vira o arquivo de progresso
+  (`joao.sav`, `joao2.sav`, ...). `F2` grava e `F3` mostra a situação geral em
+  tela cheia.
 * Fonte VGA 8×16 autêntica (256 glifos × 16 bytes) extraída de uma run do
   `ALLCHARS.COM` no DOSBox-X.
 * Modo *headless* determinístico (`--auto`, `--script`, `--check`,
-  `--savetest`) para regressão e *diffs* de tela — ver
+  `--savetest`, `--flow`) para regressão e *diffs* de tela — ver
   [`port/README.md`](port/README.md) para os comandos completos.
 * Validação: `--check 20000` fecha partidas inteiras em 14 seeds sem perder
   ou duplicar cartas; `--savetest 900` garante ida-e-volta fiel do save.

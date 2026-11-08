@@ -27,9 +27,10 @@ extraída do próprio jogo).
 | Partida até 3.000 pontos, várias mãos | ✅ |
 | Sorteio diferente a cada nova partida | ✅ |
 | Fonte VGA 8×16 autêntica extraída do DOSBox-X | ✅ |
-| F1 ajuda, F3 situação; mão do adversário sempre oculta | ✅ |
-| F2 salvar / F5 restaurar (`buraco.sav`) | ✅ |
-| Modo headless para regressão/diff | ✅ |
+| F1 ajuda, F3 situação geral em tela cheia; mão do adversário sempre oculta | ✅ |
+| F2 salvar por jogador / F5 restaurar (`<nome>.sav` na pasta do jogo) | ✅ |
+| Tela inicial, continuar jogo gravado ou novo jogo com nome do jogador | ✅ |
+| Modo headless para regressão/diff (inclusive do fluxo inicial) | ✅ |
 
 ## 2. Build
 
@@ -83,11 +84,30 @@ carregada em `SDL_GetBasePath()/assets/font8x16.bin`).
 | A / N (pergunta) | aumenta o jogo existente (A) ou baixa um novo do mesmo naipe (N) |
 | ENTER (fase descarte) | descarta a carta sob o cursor |
 | ENTER (fim de mão) | próxima mão |
-| F1 | tela de ajuda |
-| F3 | situação geral (placar e número da mão) |
-| F2 | grava a partida em `buraco.sav` |
-| F5 | restaura a partida gravada |
-| ESC | limpa a seleção; sem seleção, encerra |
+| ENTER (tela inicial) | segue para continuar um save encontrado ou pede o nome |
+| S / N (tela de save) | continua o jogo gravado (S) ou começa um novo (N) |
+| texto + ENTER (nome) | o nome digitado vira o arquivo de progresso |
+| F1 | tela de ajuda (o mesmo texto da tela inicial) |
+| F3 | situação geral em tela cheia (partidas, vitórias, pontos, mãos, jogos, mesa e monte) |
+| F2 | grava a partida em `<nome do jogador>.sav` (ou `<nome>2.sav`, `<nome>3.sav`, ...) |
+| F5 | restaura a partida gravada no caminho atual |
+| ESC | limpa a seleção; sem seleção, encerra (na tela inicial, encerra) |
+
+### Fluxo inicial
+
+Ao abrir o jogo aparece a tela de apresentação/ajuda (a mesma do `F1`), com o
+texto terminando em `...agora aperte ENTER`. Depois do `ENTER`, o porte procura
+na pasta do jogo (ao lado de `buraco.exe`) o `.sav` mais recente que comece com
+`BURACO-SAVE`:
+
+* **se encontrar**, pergunta se o jogador quer continuar (`S`) ou criar um novo
+  jogo (`N`);
+* **se não encontrar** (ou se o jogador escolher `N`), pede o nome do jogador.
+
+O nome digitado é usado como nome do arquivo de progresso. Se já existir um
+arquivo com esse nome, o porte acrescenta numeração progressiva
+(`joao.sav`, `joao2.sav`, `joao3.sav`, ...). `F2` grava no arquivo escolhido no
+início da partida; `F5` restaura esse mesmo caminho.
 
 ## 4. Modos de execução (teste sem janela)
 
@@ -111,10 +131,17 @@ motor de regras sem depender de foco de janela (comandos a partir de `port\`):
 
 # ida-e-volta do save: grava, recarrega e compara o estado por mais 400 fases
 .\build\buraco.exe --savetest 900 --out work\savetest.txt --save work\test.sav --seed 31337
+
+# fluxo inicial sem janela: apresentação -> nome -> F2 -> F3
+.\build\buraco.exe --flow --script work\keys_flow_new.txt --out work\flow.txt --savedir work\flowtest --seed 4242
 ```
 
-`--save <arquivo>` troca o caminho padrão do save (útil para testes sem
-sobrescrever o `buraco.sav` real). `--check` imprime uma linha por mão fechada
+`--save <arquivo>` troca o caminho padrão do save e também a pasta usada na
+descoberta do fluxo inicial (útil para testes sem sobrescrever um save real).
+`--savedir <pasta>` define explicitamente a "pasta do jogo" para descoberta e
+numeração dos saves. `--flow` faz um `--script` headless começar na tela de
+apresentação (em vez de direto na mesa), permitindo testar o fluxo
+continuar/novo jogo e a digitação do nome. `--check` imprime uma linha por mão fechada
 (`# hand N scored at step S: p0 ... p1 ...`) e termina com
 `OK steps=... hands=... p0=... p1=...`.
 
@@ -198,11 +225,16 @@ Constantes recuperadas de `FUN_1000_1920` (réguas e divisória) e de
 
 ### Save (`F2`/`F5`)
 
-Arquivo texto `BURACO-SAVE 1` (padrão `buraco.sav`, ou `--save <arquivo>`).
+Arquivo texto `BURACO-SAVE 1` gravado na pasta do jogo (ao lado de
+`buraco.exe`). O nome padrão vem do jogador: `<nome>.sav`, com numeração
+progressiva (`<nome>2.sav`, `<nome>3.sav`, ...) quando o nome já existe;
+`--save <arquivo>` e `--savedir <pasta>` substituem esse caminho nos testes.
 Guarda fase, jogador da vez, semente do RNG, mãos, jogos (15 slots + flags de
-curinga), monte, mesa, morto, placar e a mensagem. O load valida os ids
-(1..108) e os contadores antes de substituir o estado; um arquivo corrompido é
-recusado por inteiro, sem quebrar a partida em andamento.
+curinga), monte, mesa, morto, placar, a mensagem e as estatísticas da partida
+(`stats <partidas> <vitórias 0> <vitórias 1>`). O load valida os ids (1..108) e
+os contadores antes de substituir o estado; um arquivo corrompido é recusado
+por inteiro, sem quebrar a partida em andamento. Saves antigos sem a linha
+`stats` continuam válidos (as estatísticas começam zeradas).
 
 ## 6. Fonte VGA
 
@@ -228,8 +260,11 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
    jogo imediatamente (aumentando um jogo existente ou formando um novo, dentro
    do limite de slots); caso contrário compra do monte.
 3. **Save**: `F2` grava um arquivo texto (`BURACO-SAVE 1`) com mãos, jogos,
-   morto, monte, mesa, placar, fase, jogador da vez e o estado do RNG, para a
-   partida continuar exatamente do ponto gravado. `F5` restaura.
+   morto, monte, mesa, placar, estatísticas da partida, fase, jogador da vez e
+   o estado do RNG, para a partida continuar exatamente do ponto gravado. `F5`
+   restaura. O nome do arquivo é o nome do jogador (`<nome>.sav`), com
+   numeração progressiva quando necessário; o fluxo inicial escolhe entre
+   continuar o save mais recente da pasta ou criar um novo jogo.
 
 ## 8. Validação
 
@@ -249,5 +284,9 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
   existente.
 * `work/x.txt` (`--script`) contém 5 mãos completas com placar, morto e
   canastras; `work/auto.txt` roda 4.000 fases sem travar.
+* `--flow --script work/keys_flow_new.txt` exercita a tela inicial, a digitação
+  do nome, o `F2` (cria `<nome>.sav` na pasta indicada por `--savedir`) e a
+  tela cheia do `F3`; repetir o nome gera `<nome>2.sav` e o fluxo de continuar
+  restaura o estado gravado.
 * Capturas do porte: `shots/50_port_melds.png`, `shots/52_port_melds.png`,
   `shots/60_port_score.png` (tela de contagem detalhada).

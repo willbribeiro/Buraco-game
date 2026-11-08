@@ -54,6 +54,8 @@ void Game::newMatch(const std::string& playerName, uint32_t seed) {
         p.lastHandPoints = 0;
     }
     handNumber_ = 0;
+    handsPlayed_ = 0;
+    wins_[0] = wins_[1] = 0;
     newHand();
 }
 
@@ -63,7 +65,8 @@ void Game::newHand() {
         p.melds.clear();
         p.tookMorto = false;
         p.wentOut = false;
-        p.lastHandPoints = 0;
+        // lastHandPoints is intentionally kept: F3 reports the score of the
+        // previous hand even after the next one has already been dealt.
     }
     monte_.clear();
     discard_.clear();
@@ -333,6 +336,9 @@ void Game::endHand(bool /*playerWentOut*/, bool /*playerWonByMeld*/) {
         p.lastHandPoints = pts;
         p.total += pts;
     }
+
+    ++handsPlayed_;
+    if (bonusSeat == 0 || bonusSeat == 1) ++wins_[bonusSeat];
 
     prompt_ = Prompt::NewHand;
     setPhase(Phase::HandOver);
@@ -658,6 +664,7 @@ bool Game::saveTo(const std::string& path) const {
     f << "wentout " << lastWentOutSeat_ << ' ' << (lastWentOutByMeld_ ? 1 : 0) << '\n';
     f << "timer " << timer_ << '\n';
     f << "drawn " << int(lastDrawn_.id) << '\n';
+    f << "stats " << handsPlayed_ << ' ' << wins_[0] << ' ' << wins_[1] << '\n';
 
     for (int seat = 0; seat < 2; ++seat) {
         const PlayerState& p = players_[seat];
@@ -703,6 +710,7 @@ bool Game::loadFrom(const std::string& path) {
 
     int meldCount[2] = {0, 0};
     int meldSeen[2] = {0, 0};
+    bool statsSeen = false;
 
     while (std::getline(f, line)) {
         while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
@@ -738,6 +746,14 @@ bool Game::loadFrom(const std::string& path) {
             in >> id;
             if (!validId(id)) return false;
             g.lastDrawn_ = id ? makeCard(uint8_t(id)) : Card{};
+        } else if (tag == "stats") {
+            int played = 0, w0 = 0, w1 = 0;
+            if (!(in >> played >> w0 >> w1)) return false;
+            if (played < 0 || w0 < 0 || w1 < 0) return false;
+            g.handsPlayed_ = played;
+            g.wins_[0] = w0;
+            g.wins_[1] = w1;
+            statsSeen = true;
         } else if (tag == "name") {
             int seat = -1;
             in >> seat;
@@ -815,6 +831,10 @@ bool Game::loadFrom(const std::string& path) {
     if (g.current_ != 0 && g.current_ != 1) return false;
     if (meldSeen[0] != meldCount[0] || meldSeen[1] != meldCount[1]) return false;
     if (g.handNumber_ < 1) return false;
+    // Older saves (before the F3 statistics were stored) have no `stats`
+    // line; the number of completed hands is still derivable from the hand
+    // counter, and the win split simply starts at zero.
+    if (!statsSeen) g.handsPlayed_ = std::max(0, g.handNumber_ - 1);
 
     *this = g;
     return true;
