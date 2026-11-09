@@ -1,130 +1,79 @@
-# Unit Tests for Buraco Port
+# Testes do porte
 
-This directory contains unit tests for the Buraco card game port.
+Testes unitários do porte C++/SDL2. O harness é próprio (`test_framework.*`)
+e não depende de Catch2 nem de nenhum outro pacote: só da biblioteca padrão e
+do SDL2 já usado pelo jogo.
 
-## Test Coverage
+## Como compilar e rodar
 
-### cards.cpp
-- `makeCard()`: Creates cards from IDs (1-108), validates deck 0 and 1 ranges
-- `cardPoints()`: Returns point values (A=15, 2/10/K=10, others=5, JOKER=20)
-- `isWild()`: Identifies wild cards (2s and jokers)
-- `isRedSuit()`: Checks if a card is from red suits (♥♦)
-- `rankGlyph()`: Gets CP437 rank glyph for display
-- `suitGlyphFor()`: Gets suit character for meld labels
-- `cardWidth()`: Returns display width (2 normal, 3 for ten)
-- `describe()`: Returns human-readable card description
-
-### cards.cpp (Meld tests)
-- `buildMeld()`: Creates a valid meld from a selection of cards
-- `buildMeldAuto()`: Auto-detects the best suit for a meld
-- `extendMeld()`: Adds cards to an existing meld run
-- Meld size, points, value calculations
-- Canastra (7-card) bonus detection
-- Low/high slot tracking
-
-### game.cpp
-- `Game::newMatch()`: Initializes a new game with seed
-- `Game::newHand()`: Deals 108 cards, sets up boards
-- Draw phase: `draw()` from monte or table
-- Play phase: `layMeld()` for laying/growing melds
-- Discard phase: `discardCard()` 
-- AI turn handling via `update()` and `autoStep()`
-- Persistence: `saveTo()`, `loadFrom()`
-
-## Building Tests
-
-### Quick Build (MinGW-w64 + CMake)
 ```powershell
 cd port
-. build.ps1
-cd ..
-cmake -S port -B port/build_tests -G "MinGW Makefiles" ^
-    -DCMAKE_BUILD_TYPE=Release ^
-    -DSDL2_DIR=work/toolchain/sdl2/SDL2-2.32.10/x86_64-w64-mingw32/lib/cmake/SDL2 ^
-    -DCATCH2_ROOT="C:/Packages/Catch2/share/cmake"
-
-cmake --build port/build_tests --config Release
+.\build.ps1                              # compila buraco.exe + buraco_tests.exe
+ctest --test-dir build --output-on-failure
+# ou direto:
+.\build\tests\buraco_tests.exe
+# um caso específico (substring do nome):
+.\build\tests\buraco_tests.exe "canastra"
 ```
 
-### Alternative with vcpkg
+Os testes são compilados por padrão. Para desligá-los:
+
 ```powershell
-vcpkg install catch2 sdl2:x64-windows
-cd port/tests
-cmake -B build -G "Visual Studio 17 2022" ^
-    -DCMAKE_BUILD_TYPE=Release ^
-    -DCATCH2_ROOT_PATH="C:/vcpkg/installed/x64-windows" ^
-    -DSDL2_DIR="C:/vcpkg/installed/x64-windows/lib/cmake/SDL2"
-cmake --build build --config Release
+cmake -S port -B port\build -DBURACO_BUILD_TESTS=OFF ...
 ```
 
-## Running Tests
+O script `run_tests.ps1` faz o build e a execução em um passo.
 
-### From Build Directory (MinGW)
+## Arquivos
+
+| Arquivo | Conteúdo |
+|---|---|
+| `test_framework.hpp/.cpp` | `TEST_CASE`, `CHECK`, `CHECK_EQ`, `REQUIRE` e o `main` |
+| `test_helpers.h` | criação de saves em memória, `snapshot()` do estado |
+| `cards_test.cpp` | ids/naipes, pontos, curingas, glifos, construção de jogos |
+| `game_test.cpp` | distribuição, compra, jogos, morto, batida, pontuação, IA, save/load |
+| `save_test.cpp` | `sanitizeName`, nomes reservados do Windows, numeração de saves |
+| `report_test.cpp` | `stateLine`/`strictLine` e `checkInvariants` (108 cartas) |
+| `ui_test.cpp` | geometria da tela, telas de ajuda/nome/contagem e hash dourado |
+
+## O que é coberto
+
+* **Cartas e jogos**: todos os ids 1..108, tabela de pontos, curingas (2 e
+  joker), A baixo/alto, buracos preenchidos por curinga, canastra limpa/suja/
+  real e extensão de jogos.
+* **Máquina de turnos**: nova partida determinística por seed, 108 cartas
+  distribuídas exatamente uma vez, compra do monte/mesa, `layOptions`,
+  `layMeld` (novo/aumentar/alvo explícito/limite de 15), descarte, morto,
+  batida, encerramento de mão e partida até 3.000 pontos.
+* **Persistência**: ida-e-volta completa (`snapshot`), rejeição de arquivos
+  corrompidos sem alterar a partida viva, saves antigos sem `stats`, validação
+  de faixas e contagens.
+* **Saves em disco**: nomes inválidos/reservados (`CON`, `COM1`, ...), corte em
+  60 caracteres e numeração `nome2.sav`, `nome3.sav` sem sobrescrever.
+* **Invariantes**: duplicação, id inválido, buraco em jogo, jogo vazio e
+  contagem total diferente de 108.
+* **Tela**: layout 80×25, molduras, mão/mesa/jogos, telas de ajuda, nome e
+  contagem. O caso *hash dourado* reproduz `--auto 400 --seed 1234` e compara
+  o hash FNV-1a das 25 linhas com o valor capturado antes da divisão de
+  `main.cpp` em módulos.
+
+## Regressão de comportamento
+
+Além dos testes, o porte mantém modos headless determinísticos. Para comparar
+uma mudança com uma versão anterior:
+
 ```powershell
-cd port/build_tests
-Release\buraco_test.exe
+.\build\buraco.exe --auto 400 --seed 1234 --out auto400.txt
+.\build\buraco.exe --check 2000 --seed 4242 --out check2000.txt
+.\build\buraco.exe --savetest 400 --seed 99 --save st.sav --out savetest.txt
 ```
 
-### From Build Directory (Visual Studio)
-```powershell
-cd port/build_tests
-.\bin\x64\Release\buraco_test.exe
-```
+`auto400.txt` e `check2000.txt` devem sair byte a byte iguais; em
+`savetest.txt` só o caminho do arquivo muda.
 
-## Test Output
+## Adicionando um teste
 
-Tests use Catch2 framework and report:
-- ✅ Passed tests
-- ❌ Failed tests with error messages
-- ℹ️ Benchmark times for fast operations
-
-Example output:
-```
-===============================================================================
-All tests passed (45 assertions in 37 test cases)
-```
-
-Or when failures occur:
-```
-test/game.cpp:128: FAILED:
-  bool(ok) == true
-with expansion:
-  false == true
-
-test/cards.cpp:156: DYNAMICALLY GENERATED ERROR:
-  Assertion failed
-```
-
-## Adding New Tests
-
-1. Add a new `.cpp` file to `tests/` directory
-2. Include it in `tests/CMakeLists.txt`:
-   ```cmake
-   add_executable(buraco_test 
-       tests/buraco.cpp
-       tests/cards.cpp
-       tests/game.cpp
-       tests/new_file.cpp  # Add your new test here
-   )
-   ```
-3. Use Catch2 macros in your test file:
-   ```cpp
-   TEST_CASE("Your test name", "[category]") {
-       // Test code here
-   }
-   ```
-
-## Continuous Integration
-
-The `port/build.ps1` script can be modified to include tests:
-```powershell
-cmake --build port/build --config Release --target buraco_test
-.\port\build\Release\buraco_test.exe
-```
-
-## Notes
-
-- Tests use deterministic RNG when compiled with `DETERMINISTIC_TEST` defined
-- All tests are designed to pass with the current game state machine implementation
-- Save/load tests use temporary files in the tests directory
-- Cards use IDs 1-108 (matching original BURACO.EXE format)
+1. Crie `tests/alguma_test.cpp` (ou use um arquivo existente).
+2. Inclua `test_framework.hpp` (e `test_helpers.h` se precisar de saves).
+3. Escreva `TEST_CASE("descrição") { ... }` com `CHECK`/`CHECK_EQ`.
+4. Adicione o `.cpp` em `tests/CMakeLists.txt`.

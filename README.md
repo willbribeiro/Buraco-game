@@ -95,20 +95,41 @@ Contagem de pontos, jogo por jogo, com bônus e descontos:
 
 ```
 port/            o porte SDL2 (C++20)
-  src/main.cpp   plataforma dos::*, apresentação ui::* e main()
+  src/main.cpp   entrada, argumentos, teclado e modos headless
   src/cards.*    modelo de carta, validação de jogo, valor de canastra
   src/game.*     máquina de turnos, IA, contagem de pontos, partida
+  src/game_save.cpp  gravação/restauração de partidas
+  src/ui.*       apresentação 80x25 da mesa e das telas
+  src/video.*    framebuffer de texto (80x25)
+  src/renderer.* fonte VGA + apresentação SDL2
+  src/save.*     descoberta e nomes dos arquivos de progresso
+  src/report.*   dumps de estado e invariantes das 108 cartas
+  tests/         testes unitários sem dependências externas
   assets/        font8x16.bin (fonte VGA extraída do executável)
 shots/           capturas do original e do porte
 tools/           scripts de captura (Python), extração de fonte, run/livre
 work/            descompilados, runs de teste, toolchain SDL2, corpos provisórios
 ```
 
-Destaques de como a integração é feita: o porte reproduz os serviços de BIOS
-do original (`INT 10h/16h/33h`, DAC VGA, VRAM B800/A000) por uma camada
-`dos::*`, de forma que o código do jogo escreve nos mesmos buffers de texto e
-de vídeo virtuais que o `BURACO.EXE` escrevia — a apresentação é uma camada
-separada e substituível (`ui::*`) que encaminha para SDL2.
+O porte escreve direto no framebuffer de texto `dos::Video` (80×25) e uma
+camada separada (`ui::*` + `renderer.*`) desenha os glifos CP437 em SDL2. O
+antigo *shim* de BIOS/DOS (`INT 10h/16h/33h`, DAC VGA, VRAM B800/A000) não é
+necessário: apenas o modo texto é usado.
+
+## Testes
+
+```powershell
+cd port
+.\build.ps1
+ctest --test-dir build --output-on-failure
+# ou direto:
+.\build\tests\buraco_tests.exe
+```
+
+Os testes usam um harness próprio (`TEST_CASE`/`CHECK`), sem Catch2, e cobrem
+cartas/jogos, máquina de turnos, save/load, nomes de arquivo, invariantes e a
+renderização determinística da tela. Detalhes em
+[`port/tests/README.md`](port/tests/README.md).
 
 ## Notas
 

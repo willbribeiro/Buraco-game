@@ -76,8 +76,6 @@ char suitGlyphFor(uint8_t suit);
 // Width in text cells: 2 normally, 3 for a ten.
 int cardWidth(const Card& c);
 
-std::string describe(const Card& c);  // "A♦", "10♠", "JOKER"
-
 // ---------------------------------------------------------------------------
 // Meld
 // ---------------------------------------------------------------------------
@@ -111,7 +109,6 @@ struct Meld {
 
     // Cards in display order (by slot).
     std::vector<Card> cards() const;
-    std::vector<int> ranks() const;    // slot indices, same order as cards()
 };
 
 // Fills `out` from `selection` using `suit` as the meld suit.  Returns false

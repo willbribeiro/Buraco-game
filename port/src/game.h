@@ -144,11 +144,13 @@ private:
 
     void beginTurn();
     void nextTurn();
-    void endHand(bool playerWentOut, bool playerWonByMeld);
+    void endHand();
     // Called whenever the current player's hand became empty.  Takes the morto
     // when it is still available, otherwise scores the hand (batida).
     void afterEmptyHand(bool byMeld);
-    int scoreHand(int seat, bool wentOut, int bonus) const;
+    // Hands the first half of the morto to the current player.  Returns false
+    // when it was already taken or there is nothing left.
+    bool takeMorto();
 
     void aiTurn();
     bool aiLayMelds();

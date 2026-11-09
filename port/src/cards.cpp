@@ -64,14 +64,6 @@ char suitGlyphFor(uint8_t suit) { return kSuitGlyph[suit % 6]; }
 
 int cardWidth(const Card& c) { return c.rank == 10 ? 3 : 2; }
 
-std::string describe(const Card& c) {
-    if (!c.valid()) return "--";
-    if (c.suit == JOKER) return "JOKER";
-    char buf[8];
-    std::snprintf(buf, sizeof buf, "%c%c", rankGlyph(c), suitGlyph(c));
-    return buf;
-}
-
 int Meld::size() const {
     int n = 0;
     for (int i = 1; i <= 15; ++i)
@@ -126,13 +118,6 @@ std::vector<Card> Meld::cards() const {
     std::vector<Card> out;
     for (int i = 1; i <= 15; ++i)
         if (slot[i].valid()) out.push_back(slot[i]);
-    return out;
-}
-
-std::vector<int> Meld::ranks() const {
-    std::vector<int> out;
-    for (int i = 1; i <= 15; ++i)
-        if (slot[i].valid()) out.push_back(i);
     return out;
 }
 

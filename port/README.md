@@ -71,6 +71,18 @@ cmake --build build --config Release
 O `CMakeLists.txt` copia `assets/` para o lado do executável (a fonte 8×16 é
 carregada em `SDL_GetBasePath()/assets/font8x16.bin`).
 
+### Testes
+
+Os testes são compilados por padrão (`-DBURACO_BUILD_TESTS=OFF` desliga) e não
+dependem de Catch2:
+
+```powershell
+cd port
+.\build.ps1
+ctest --test-dir build --output-on-failure
+# ou: .\build\tests\buraco_tests.exe
+```
+
 ## 3. Controles
 
 | Tecla | Ação |
@@ -158,28 +170,23 @@ jogos (naipe, tamanho, valor e ids das cartas) e placar. Suits são
 ## 5. Arquitetura
 
 ```
-src/main.cpp   camada de plataforma dos::* + apresentação ui::* + main()
-src/cards.*    modelo de carta, validação de jogo, valor de canastra
-src/game.*     máquina de turnos, IA, contagem de pontos, partida
-assets/        font8x16.bin (256 glifos × 16 bytes, VGA 8×16)
+src/main.cpp        entrada, argumentos, teclado e modos headless
+src/cards.*         modelo de carta, validação de jogo, valor de canastra
+src/game.*          máquina de turnos, IA, contagem de pontos
+src/game_save.cpp   gravação/restauração de partidas
+src/ui.*            apresentação 80x25 da mesa e das telas
+src/video.*         framebuffer de texto (80x25)
+src/renderer.*      fonte VGA + apresentação SDL2
+src/save.*          descoberta e nomes dos arquivos de progresso
+src/report.*        dumps de estado e invariantes das 108 cartas
+tests/              testes unitários (harness próprio, sem Catch2)
+assets/             font8x16.bin (256 glifos × 16 bytes, VGA 8×16)
 ```
 
-### `dos::` — o que foi portado do BIOS/DOS
-
-| Serviço original | Substituto |
-|---|---|
-| `INT 10h` (vídeo) | `dos::Video` + `dos::int10` |
-| `INT 16h` (teclado) | `dos::Keyboard` + `dos::int16` |
-| `INT 33h` (mouse) | `dos::Mouse` + `dos::int33` |
-| ticks do PIT / `INT 1Ah` | `dos::Clock` (18,2065 Hz) |
-| DAC VGA (`3C8h/3C9h`) | `Video::setDac` / `dacWrite` |
-| polling de retraço (`3DAh`) | `dos::Ports::in` |
-| VRAM de texto `B800:0000` | `Video::text` (80×25×2) |
-| VRAM modo 13h `A000:0000` | `Video::vga` (320×200) |
-
-Foi mantido o *framebuffer-first shim*: o código de jogo escreve nos mesmos
-buffers virtuais que o original escrevia e a renderização é uma camada
-separada e substituível.
+O porte escreve direto no framebuffer `dos::Video::text` (80×25×2). O antigo
+*shim* de BIOS/DOS (`INT 10h/16h/33h`, DAC VGA, VRAM `B800:0000`/`A000:0000`)
+foi removido junto com o modo 13h: o jogo só usa modo texto, e `renderer.cpp`
+transforma os glifos CP437 em pixels com a fonte extraída do jogo.
 
 ### `ui::` — geometria da tela
 
@@ -268,6 +275,10 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 ## 8. Validação
 
+* `ctest --test-dir build` roda os 80 casos de teste (cartas, máquina de
+  turnos, save/load, nomes de arquivo, invariantes e tela). O caso de tela
+  compara o hash das 25 linhas com a saída capturada de `--auto 400 --seed
+  1234`, então a divisão do antigo `main.cpp` em módulos não mudou um pixel.
 * `shots/33_deal720.png` (original) vs. `shots/41_port_deal.png` (porte):
   mesma distribuição de linhas, mesma fan vertical de 2 colunas por carta.
 * `--check 20000` fecha partidas inteiras nos seeds 99, 777, 12345, 4242, 7,
