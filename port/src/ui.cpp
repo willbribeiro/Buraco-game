@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include "cards.h"
+#include "options.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -530,6 +531,32 @@ void draw(dos::Video& v, const Game& g, const UiState& ui) {
     if (g.phase() == buraco::Phase::HandOver) drawHandOver(v, g);
     if (ui.status) drawStatus(v, g);
     if (ui.help) drawHelp(v);
+}
+
+void drawOptions(dos::Video& v, const config::DisplaySettings& settings,
+                 int selectedRow) {
+    clear(v);
+    drawFrame(v, 1, 78, 1, 23);
+    puts(v, 0, 0, "BURACO - opcoes", DIM);
+
+    static const int kRows[options::kRowCount] = {3, 4, 5, 6, 7, 9, 10, 11};
+    for (int i = 0; i < options::kRowCount; ++i) {
+        const options::Row row = static_cast<options::Row>(i);
+        const bool selected = i == selectedRow;
+        const uint8_t attr = selected ? CARD_SEL : FIELD;
+        if (selected) put(v, 2, kRows[i], '>', attr);
+        puts(v, 4, kRows[i], options::label(row), attr);
+        const std::string text = options::value(row, settings);
+        if (!text.empty()) puts(v, 27, kRows[i], text, attr);
+    }
+
+    puts(v, 3, 14, "Setas cima/baixo escolhem; esquerda/direita alteram.", DIM);
+    puts(v, 3, 15, "ENTER aplica.  F9 ou ESC fecha esta tela.", DIM);
+    puts(v, 3, 16, "As preferencias sao gravadas no buraco.cfg ao sair.", DIM);
+    puts(v, 3, 18, "1x..8x = 640x400 vezes a escala.  Auto usa o tamanho salvo", DIM);
+    puts(v, 3, 19, "e reduz para 90% da area util da tela.", DIM);
+    if (settings.integerScale)
+        puts(v, 3, 21, "Modo inteiro: a imagem pode cair para 1x em telas pequenas.", WILD);
 }
 
 }  // namespace ui

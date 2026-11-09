@@ -1,6 +1,7 @@
 // 80x25 presentation of the game state.
 #pragma once
 
+#include "config.h"
 #include "game.h"
 #include "video.h"
 
@@ -61,5 +62,10 @@ struct UiState {
 };
 
 void draw(dos::Video& v, const buraco::Game& g, const UiState& ui);
+
+// F9 options panel.  It covers the whole 80x25 screen and reads the live
+// display settings; `selectedRow` indexes options::Row.
+void drawOptions(dos::Video& v, const config::DisplaySettings& settings,
+                 int selectedRow);
 
 }  // namespace ui

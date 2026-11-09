@@ -146,4 +146,4 @@ renderização determinística da tela. Detalhes em
 - [ ] Som
 - [ ] Modo multi-jogador (rede/hot-seat)
 - [ ] Tradução da interface
-- [ ] Opções de janela/redimensionamento
+- [x] Opções de janela/redimensionamento

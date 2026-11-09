@@ -15,10 +15,14 @@ find_package(SDL2 CONFIG REQUIRED)
 # the same code the executable runs.
 add_library(buraco_core STATIC
     src/cards.cpp
+    src/config.cpp
     src/game.cpp
     src/game_save.cpp
+    src/options.cpp
     src/ui.cpp
     src/video.cpp
+    src/window_scale.cpp
+    src/window_state.cpp
     src/save.cpp
     src/report.cpp)
 

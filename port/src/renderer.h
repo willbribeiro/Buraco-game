@@ -1,6 +1,7 @@
 // SDL2 presentation: text framebuffer -> texture -> window.
 #pragma once
 
+#include "config.h"
 #include "video.h"
 
 #include <array>
@@ -21,8 +22,26 @@ public:
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
 
-    bool init(const char* title, int scale);
+    // Creates the window.  `settings` is adjusted in place when the saved
+    // position no longer falls on an existing monitor.
+    bool init(const char* title, config::DisplaySettings& settings);
+
+    // Applies display settings to an existing window: size, position,
+    // fullscreen, maximized, VSync and integer scaling.  Safe to call with the
+    // settings already in effect.
+    void apply(const config::DisplaySettings& settings);
+
     void present(Video& video, double timeSeconds);
+
+    bool isFullscreen() const;
+    bool isMaximized() const;
+
+    // Geometry this renderer last asked the window manager for.  The event
+    // loop uses it to tell our own resize/move apart from a user action.
+    int expectedWidth() const { return appliedWidth_; }
+    int expectedHeight() const { return appliedHeight_; }
+    int expectedX() const { return appliedX_; }
+    int expectedY() const { return appliedY_; }
 
 private:
     void loadFont();
@@ -35,6 +54,10 @@ private:
     std::vector<uint32_t> canvas_;
     std::array<uint8_t, 256 * 16> font_{};
     bool fontLoaded_ = false;
+    int appliedWidth_ = 0;
+    int appliedHeight_ = 0;
+    int appliedX_ = 0;
+    int appliedY_ = 0;
 };
 
 }  // namespace dos

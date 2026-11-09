@@ -3,10 +3,14 @@
 add_executable(buraco_tests
     test_framework.cpp
     cards_test.cpp
+    config_test.cpp
     game_test.cpp
+    options_test.cpp
     save_test.cpp
     report_test.cpp
-    ui_test.cpp)
+    ui_test.cpp
+    window_scale_test.cpp
+    window_state_test.cpp)
 
 target_link_libraries(buraco_tests PRIVATE buraco_core)
 

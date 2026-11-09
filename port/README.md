@@ -83,6 +83,71 @@ ctest --test-dir build --output-on-failure
 # ou: .\build\tests\buraco_tests.exe
 ```
 
+### Configuração de vídeo (fase 1)
+
+O porte procura um `buraco.cfg` ao lado do `buraco.exe` (pasta portátil). Se
+esse arquivo não existir ou não puder ser gravado, a configuração fica em
+`SDL_GetPrefPath("buraco", "buraco")` (normalmente
+`%APPDATA%\buraco\buraco\buraco.cfg`). O arquivo é texto simples:
+
+```ini
+# Buraco display settings
+version=1
+fullscreen=0
+scale=2
+window_width=1280
+window_height=800
+window_centered=1
+window_x=0
+window_y=0
+maximized=0
+integer_scale=0
+vsync=1
+```
+
+| Chave | Efeito |
+|---|---|
+| `fullscreen` | abre em tela cheia borderless |
+| `scale` | `0` = tamanho salvo; `1..8` = 640×400 × escala |
+| `window_width` / `window_height` | tamanho da janela quando `scale=0` |
+| `window_centered` | `1` centraliza; `0` usa `window_x`/`window_y` |
+| `window_x` / `window_y` | posição da janela (aceita coordenadas negativas) |
+| `maximized` | abre maximizada |
+| `integer_scale` | escala inteira (pixel-perfect) |
+| `vsync` | VSync ligado/desligado |
+
+Na inicialização o tamanho é reduzido para caber em 90% da área útil da tela,
+preservando 8:5. O padrão é 2× (1280×800); em telas como 1366×768 ele encolhe
+automaticamente. O modo `integer_scale` pode cair para 1× nessas telas — é o
+comportamento esperado do modo pixel-perfect. Se a posição salva não cair em
+nenhum monitor conectado, a janela é centralizada (`--display-info` mostra o
+diagnóstico).
+
+Durante o jogo, `F11` ou `Alt+Enter` alternam entre janela e tela cheia
+(borderless, na resolução da área de trabalho). Ao fechar, o porte grava
+tamanho, posição, maximizada, tela cheia, escala, escala inteira e VSync no
+`buraco.cfg`. Para não sobrescrever as preferências do jogador, a gravação é
+omitida quando a execução usa opções de vídeo na linha de comando
+(`--scale`, `--fullscreen`, `--integer-scale`, `--vsync`) e em execuções de
+demonstração (`--auto ... --gui`).
+
+Opções de linha de comando relacionadas (válidas só para a execução; não
+alteram o arquivo):
+
+```powershell
+.\build\buraco.exe --display-info          # mostra config, display e escala calculada
+.\build\buraco.exe --scale 3 --vsync off
+.\build\buraco.exe --fullscreen --integer-scale
+.\build\buraco.exe --config work\meu.cfg --reset-config
+```
+
+A tela de opções (`F9`) edita tudo isso em tempo real: escala (Auto ou 1×..8×),
+ajuste inteiro/esticado, tela cheia, VSync, iniciar maximizada, centralizar a
+janela e restaurar os padrões. Setas cima/baixo escolhem a linha,
+esquerda/direita alteram o valor, `ENTER` aplica e `F9`/`ESC` fecha. A partida
+fica pausada enquanto a tela está aberta, e as preferências são gravadas no
+`buraco.cfg` ao sair.
+
 ## 3. Controles
 
 | Tecla | Ação |
@@ -103,6 +168,8 @@ ctest --test-dir build --output-on-failure
 | F3 | situação geral em tela cheia (partidas, vitórias, pontos, mãos, jogos, mesa e monte) |
 | F2 | grava a partida em `<nome do jogador>.sav` (ou `<nome>2.sav`, `<nome>3.sav`, ...) |
 | F5 | restaura a partida gravada no caminho atual |
+| F9 | opções de vídeo: escala, ajuste, tela cheia, VSync, maximizada e posição |
+| F11 / Alt+Enter | alterna janela / tela cheia (a preferência é salva ao sair) |
 | ESC | limpa a seleção; sem seleção, encerra (na tela inicial, encerra) |
 
 ### Fluxo inicial
@@ -275,8 +342,9 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 ## 8. Validação
 
-* `ctest --test-dir build` roda os 80 casos de teste (cartas, máquina de
-  turnos, save/load, nomes de arquivo, invariantes e tela). O caso de tela
+* `ctest --test-dir build` roda os 115 casos de teste (cartas, máquina de
+  turnos, save/load, nomes de arquivo, invariantes, tela, configuração de
+  vídeo, cálculo e estado da janela, tela de opções). O caso de tela
   compara o hash das 25 linhas com a saída capturada de `--auto 400 --seed
   1234`, então a divisão do antigo `main.cpp` em módulos não mudou um pixel.
 * `shots/33_deal720.png` (original) vs. `shots/41_port_deal.png` (porte):

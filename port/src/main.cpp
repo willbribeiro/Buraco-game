@@ -13,11 +13,15 @@
 #include <SDL.h>
 
 #include "game.h"
+#include "config.h"
+#include "options.h"
 #include "renderer.h"
 #include "report.h"
 #include "save.h"
 #include "ui.h"
 #include "video.h"
+#include "window_scale.h"
+#include "window_state.h"
 
 #include <algorithm>
 #include <cctype>
@@ -88,6 +92,93 @@ static uint32_t makeSeed() {
     return s ? s : 0x9E3779B9u;
 }
 
+// ---------------------------------------------------------------------------
+// Display configuration: CLI parsing, startup load and window persistence.
+// ---------------------------------------------------------------------------
+static bool parseScaleValue(const std::string& text, int& scale) {
+    if (text == "auto") {
+        scale = 0;
+        return true;
+    }
+    if (text.empty()) return false;
+    int value = 0;
+    for (char c : text) {
+        if (c < '0' || c > '9') return false;
+        value = value * 10 + (c - '0');
+        if (value > 8) return false;
+    }
+    if (value < 1) return false;
+    scale = value;
+    return true;
+}
+
+static bool parseOnOff(const std::string& text, bool& value) {
+    if (text == "on" || text == "1" || text == "true" || text == "yes") {
+        value = true;
+        return true;
+    }
+    if (text == "off" || text == "0" || text == "false" || text == "no") {
+        value = false;
+        return true;
+    }
+    return false;
+}
+
+static int printDisplayInfo(const config::Settings& settings, const std::string& path,
+                            bool found) {
+    std::printf("config: %s\n", path.c_str());
+    std::printf("config status: %s\n", found ? "loaded" : "not found (defaults)");
+    std::printf("fullscreen: %s\n", settings.display.fullscreen ? "on" : "off");
+    std::printf("scale: %d%s\n", settings.display.scale,
+                settings.display.scale == 0 ? " (custom window size)" : "");
+    std::printf("window: %dx%d centered=%s position=%d,%d\n",
+                settings.display.windowWidth, settings.display.windowHeight,
+                settings.display.centered ? "yes" : "no", settings.display.windowX,
+                settings.display.windowY);
+    std::printf("maximized: %s\n", settings.display.maximized ? "on" : "off");
+    std::printf("integer scale: %s\n", settings.display.integerScale ? "on" : "off");
+    std::printf("vsync: %s\n", settings.display.vsync ? "on" : "off");
+
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        std::printf("display: unavailable (%s)\n", SDL_GetError());
+        return 1;
+    }
+
+    SDL_version version{};
+    SDL_GetVersion(&version);
+    const char* driver = SDL_GetCurrentVideoDriver();
+    std::printf("SDL: %d.%d.%d\n", version.major, version.minor, version.patch);
+    std::printf("video driver: %s\n", driver ? driver : "?");
+
+    const int displays = SDL_GetNumVideoDisplays();
+    std::vector<window_scale::Rect> displayRects;
+    for (int i = 0; i < displays; ++i) {
+        SDL_Rect bounds{0, 0, 0, 0};
+        SDL_GetDisplayBounds(i, &bounds);
+        displayRects.push_back(
+            window_scale::Rect{bounds.x, bounds.y, bounds.w, bounds.h});
+        SDL_Rect usable{0, 0, 0, 0};
+        SDL_GetDisplayUsableBounds(i, &usable);
+        SDL_DisplayMode mode{};
+        SDL_GetCurrentDisplayMode(i, &mode);
+        const window_scale::Size size = window_scale::windowSize(
+            settings.display.windowWidth, settings.display.windowHeight,
+            settings.display.scale, usable.w, usable.h);
+        std::printf(
+            "display %d: %dx%d usable=%dx%d at %d,%d -> window=%dx%d max_integer=%d\n",
+            i, mode.w, mode.h, usable.w, usable.h, usable.x, usable.y, size.width,
+            size.height, window_scale::maxIntegerScale(usable.w, usable.h));
+    }
+    if (!settings.display.centered && !displayRects.empty()) {
+        std::printf("position: %s\n",
+                    window_state::positionVisible(settings.display, displayRects)
+                        ? "visible"
+                        : "off-screen (window will be centered)");
+    }
+    SDL_Quit();
+    return 0;
+}
+
 int main(int argc, char** argv) {
     std::string scriptPath;
     std::string outPath = "screen.txt";
@@ -98,6 +189,15 @@ int main(int argc, char** argv) {
     bool guiAfterAuto = false;
     bool savePathSet = false;
     bool flowTest = false;
+    std::string configPath;
+    bool configPathSet = false;
+    bool resetConfig = false;
+    bool displayInfo = false;
+    std::optional<int> cliScale;
+    std::optional<bool> cliFullscreen;
+    std::optional<bool> cliIntegerScale;
+    std::optional<bool> cliVsync;
+    std::string cliError;
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -119,13 +219,73 @@ int main(int argc, char** argv) {
             flowTest = true;
         } else if (a == "--gui") {
             guiAfterAuto = true;
+        } else if (a == "--config" && i + 1 < argc) {
+            configPath = argv[++i];
+            configPathSet = true;
+        } else if (a == "--reset-config") {
+            resetConfig = true;
+        } else if (a == "--scale" && i + 1 < argc) {
+            int value = 0;
+            if (parseScaleValue(argv[++i], value)) cliScale = value;
+            else cliError = "invalid --scale value (use auto or 1..8)";
+        } else if (a == "--windowed") {
+            cliFullscreen = false;
+        } else if (a == "--fullscreen") {
+            cliFullscreen = true;
+        } else if (a == "--integer-scale") {
+            cliIntegerScale = true;
+        } else if (a == "--stretch") {
+            cliIntegerScale = false;
+        } else if (a == "--vsync" && i + 1 < argc) {
+            bool value = true;
+            if (parseOnOff(argv[++i], value)) cliVsync = value;
+            else cliError = "invalid --vsync value (use on or off)";
+        } else if (a == "--display-info") {
+            displayInfo = true;
+        } else if (a == "--config" || a == "--scale" || a == "--vsync") {
+            cliError = "missing value for " + a;
         }
     }
+    if (!cliError.empty()) {
+        std::fprintf(stderr, "%s\n", cliError.c_str());
+        return 2;
+    }
+    // Display flags are a one-run experiment: they override the file but are
+    // not written back on exit, so testing --fullscreen or --scale never
+    // rewrites the player's saved preferences.
+    const bool displayOverride = cliScale.has_value() || cliFullscreen.has_value() ||
+                                 cliIntegerScale.has_value() || cliVsync.has_value();
     bool headless = (!scriptPath.empty() || autoSteps > 0) && !guiAfterAuto;
     // Every batch mode (script, auto, check, savetest) keeps the historical
     // default seed so failures are reproducible; only the windowed game picks
     // a fresh seed per match.
     const bool batch = headless || checkSteps > 0 || saveTestSteps > 0;
+
+    // Phase 1 loads the display config only when a window will be created (or
+    // when --display-info asks for it), so headless regression runs never touch
+    // the user's portable config or the per-user preference directory.
+    const bool windowedRun = !headless && checkSteps == 0 && saveTestSteps == 0;
+    config::Settings cfg;
+    std::string configFile;
+    bool configFound = false;
+    if (windowedRun || displayInfo) {
+        configFile = configPathSet ? configPath : config::defaultPath();
+        std::string configWarning;
+        if (!resetConfig) {
+            if (configPathSet)
+                configFound = config::load(configFile, cfg, &configWarning);
+            else
+                configFound = config::loadDefault(cfg, configFile, &configWarning);
+        }
+        if (cliScale) cfg.display.scale = *cliScale;
+        if (cliFullscreen) cfg.display.fullscreen = *cliFullscreen;
+        if (cliIntegerScale) cfg.display.integerScale = *cliIntegerScale;
+        if (cliVsync) cfg.display.vsync = *cliVsync;
+        config::normalize(cfg);
+        if (!configWarning.empty())
+            std::fprintf(stderr, "config: %s", configWarning.c_str());
+        if (displayInfo) return printDisplayInfo(cfg, configFile, configFound);
+    }
 
     dos::Video video;
 
@@ -651,12 +811,15 @@ int main(int argc, char** argv) {
 
     // ---- interactive window ----------------------------------------------
     dos::Renderer renderer;
-    if (!renderer.init("Buraco", 2)) {
+    if (!renderer.init("Buraco", cfg.display)) {
         std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
         return 1;
     }
     if (!guiAfterAuto) game.setMessage("Embaralhando. Por favor, corte... <ENTER>");
     resetSelection();
+
+    bool optionsOpen = false;
+    options::State optionsState;
 
     uint64_t last = SDL_GetTicks64();
     while (running) {
@@ -664,9 +827,66 @@ int main(int argc, char** argv) {
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
                 running = false;
+            } else if (e.type == SDL_WINDOWEVENT) {
+                // While fullscreen or maximized the window manager owns the
+                // geometry; those sizes must not overwrite the saved window.
+                const bool managed = renderer.isFullscreen() || renderer.isMaximized();
+                switch (e.window.event) {
+                    case SDL_WINDOWEVENT_SIZE_CHANGED:
+                        window_state::onResize(cfg.display, e.window.data1, e.window.data2,
+                                               renderer.expectedWidth(),
+                                               renderer.expectedHeight(), managed);
+                        break;
+                    case SDL_WINDOWEVENT_MOVED:
+                        window_state::onMove(cfg.display, e.window.data1, e.window.data2,
+                                             renderer.expectedX(), renderer.expectedY(),
+                                             managed);
+                        break;
+                    case SDL_WINDOWEVENT_MAXIMIZED:
+                        window_state::onMaximized(cfg.display, true);
+                        break;
+                    case SDL_WINDOWEVENT_RESTORED:
+                        window_state::onMaximized(cfg.display, false);
+                        break;
+                    default:
+                        break;
+                }
             } else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
-                key(e.key.keysym.sym);
-            } else if (e.type == SDL_TEXTINPUT &&
+                const SDL_Keycode sym = e.key.keysym.sym;
+                const bool altEnter =
+                    sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT) != 0;
+                if (sym == SDLK_F11 || altEnter) {
+                    // Renderer state is the source of truth: the window manager
+                    // may have left fullscreen on its own (e.g. Alt+Tab).
+                    cfg.display.fullscreen = !renderer.isFullscreen();
+                    renderer.apply(cfg.display);
+                } else if (sym == SDLK_F9) {
+                    optionsOpen = !optionsOpen;
+                } else if (optionsOpen) {
+                    std::optional<options::Key> optionKey;
+                    switch (sym) {
+                        case SDLK_UP: optionKey = options::Key::Up; break;
+                        case SDLK_DOWN: optionKey = options::Key::Down; break;
+                        case SDLK_LEFT: optionKey = options::Key::Left; break;
+                        case SDLK_RIGHT: optionKey = options::Key::Right; break;
+                        case SDLK_RETURN:
+                        case SDLK_KP_ENTER: optionKey = options::Key::Enter; break;
+                        case SDLK_ESCAPE: optionKey = options::Key::Escape; break;
+                        default: break;
+                    }
+                    if (optionKey) {
+                        const options::Action action =
+                            options::handleKey(optionsState, *optionKey, cfg.display);
+                        if (action == options::Action::Apply ||
+                            action == options::Action::Reset)
+                            renderer.apply(cfg.display);
+                        else if (action == options::Action::Close)
+                            optionsOpen = false;
+                    }
+                } else {
+                    key(sym);
+                }
+            } else if (e.type == SDL_TEXTINPUT && !optionsOpen &&
                        ui.screen == ui::UiState::Screen::NameEntry) {
                 for (const char* p = e.text.text; *p; ++p) {
                     const unsigned char c = static_cast<unsigned char>(*p);
@@ -680,7 +900,9 @@ int main(int argc, char** argv) {
         const double dt = double(now - last) / 1000.0;
         last = now;
 
-        game.update(dt);
+        // The options panel pauses the match: opening it must not let the AI
+        // take a turn while the player is reading the settings.
+        if (!optionsOpen) game.update(dt);
         if (started && game.current() == 0) {
             if (int(ui.selected.size()) != int(game.player(0).hand.size()))
                 resetSelection();
@@ -690,8 +912,26 @@ int main(int argc, char** argv) {
         }
 
         ui::draw(video, game, ui);
+        if (optionsOpen) ui::drawOptions(video, cfg.display, optionsState.selected);
         renderer.present(video, double(now) / 1000.0);
         SDL_Delay(8);
+    }
+
+    // Persist the window state the player ended up with.  Demo runs and
+    // command-line overrides skip this so automated screenshots and one-off
+    // experiments never rewrite the real configuration.
+    if (!demo && !displayOverride) {
+        std::string usedPath;
+        std::string error;
+        bool saved = false;
+        if (configPathSet) {
+            saved = config::save(configFile, cfg, &error);
+            usedPath = configFile;
+        } else {
+            saved = config::saveWithFallback(configFile, cfg, usedPath, &error);
+        }
+        if (!saved)
+            std::fprintf(stderr, "config: cannot save %s\n", error.c_str());
     }
     return 0;
 }
