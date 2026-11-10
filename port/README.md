@@ -49,6 +49,9 @@ Da raiz do repositório:
 # atalho: localiza o SDL2 em work\toolchain, configura, compila e copia a DLL
 .\port\build.ps1
 
+# primeira vez, sem SDL2 local: baixa o pacote oficial e confere o SHA-256
+.\port\build.ps1 -Download
+
 # ou manualmente:
 # SDL2 (uma vez): baixe SDL2-devel-*-mingw.zip e extraia em work\toolchain\sdl2
 $sdl = "work\toolchain\sdl2\SDL2-2.32.10\x86_64-w64-mingw32"
@@ -60,6 +63,10 @@ cmake --build port\build
 Copy-Item "$sdl\bin\SDL2.dll" port\build\   # o POST_BUILD copia assets/, não a DLL
 .\port\build\buraco.exe
 ```
+
+`work/toolchain` é uma pasta local de desenvolvimento e não é versionada. O
+`-Download` aceita `-Sha256 <hash>` para versões novas; sem um hash conhecido
+ele recusa o download em vez de extrair um pacote não verificado.
 
 Com vcpkg/MSVC o fluxo é o mesmo, trocando o gerador:
 

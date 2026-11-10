@@ -10,10 +10,17 @@ param(
     [string]$SdlDir,
     [string]$BuildDir = "$PSScriptRoot\build",
     [string]$Version = "2.32.10",
+    [string]$Sha256 = "",
     [switch]$Download
 )
 
 $ErrorActionPreference = "Stop"
+
+# SHA-256 of the official SDL2-devel-<version>-mingw.zip published on GitHub.
+# Add new entries only after verifying the file against the official release.
+$KnownSha256 = @{
+    "2.32.10" = "F15CFF5FCA62EC9381A016EF1D42A95C638CD72D2F226BA5781C76FE43DBD1AC"
+}
 
 function Find-Sdl([string]$root, [string]$version) {
     $bases = @(
@@ -40,9 +47,33 @@ if (-not $SdlDir) {
         throw "SDL2 nao encontrado. Passe -SdlDir <pasta x86_64-w64-mingw32> ou use -Download."
     }
     $zip = Join-Path $PSScriptRoot "..\work\toolchain\SDL2-devel-$Version-mingw.zip"
+    if (-not $Sha256) { $Sha256 = $KnownSha256[$Version] }
+    if (-not $Sha256) {
+        throw "sem SHA-256 conhecido para SDL2 $Version. Verifique o arquivo oficial e passe -Sha256 <hash>."
+    }
+    $expected = $Sha256.Trim().ToUpperInvariant()
     New-Item -ItemType Directory -Force (Split-Path $zip) | Out-Null
-    Write-Host "Baixando SDL2 $Version..."
-    Invoke-WebRequest "https://github.com/libsdl-org/SDL/releases/download/release-$Version/SDL2-devel-$Version-mingw.zip" -OutFile $zip
+
+    # Reuse a previously verified package; otherwise download and check it
+    # before extracting anything.
+    $verified = $false
+    if (Test-Path $zip) {
+        $cached = (Get-FileHash $zip -Algorithm SHA256).Hash.ToUpperInvariant()
+        if ($cached -eq $expected) {
+            Write-Host "SHA-256 OK (arquivo existente): $cached"
+            $verified = $true
+        }
+    }
+    if (-not $verified) {
+        Write-Host "Baixando SDL2 $Version..."
+        Invoke-WebRequest "https://github.com/libsdl-org/SDL/releases/download/release-$Version/SDL2-devel-$Version-mingw.zip" -OutFile $zip
+        $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToUpperInvariant()
+        if ($actual -ne $expected) {
+            Remove-Item $zip -Force -ErrorAction SilentlyContinue
+            throw "checksum SHA-256 invalido para SDL2 $Version (esperado $expected, obtido $actual); download descartado."
+        }
+        Write-Host "SHA-256 OK: $actual"
+    }
     Expand-Archive $zip -DestinationPath (Join-Path $PSScriptRoot "..\work\toolchain\sdl2") -Force
     $SdlDir = Join-Path $PSScriptRoot "..\work\toolchain\sdl2\SDL2-$Version\x86_64-w64-mingw32"
 }

@@ -11,11 +11,15 @@ port/build/
 
 # Generated files from unpacking
 unpack/
+work/toolchain/
+work/unp/
+work/unpack/
+work/unp_candidate.zip
+work/*.pid
 work/*.sav
 work/*.txt*
 work/*.log
 work/*.err
-work/*.pid
 
 # IDE
 .vscode/
