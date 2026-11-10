@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "cards.h"
+#include "sound.h"
 
 namespace buraco {
 
@@ -74,6 +75,17 @@ public:
     }
 
     void setMessage(const std::string& m) { message_ = m; }
+
+    // ---- sound effects ---------------------------------------------------
+    // Events produced since the last drain.  They never influence the match,
+    // so headless modes can simply ignore them (the queue is capped and drops
+    // the oldest event when nobody is listening).
+    std::vector<sound::Event> takeEvents();
+    bool hasEvents() const { return !events_.empty(); }
+
+    // Queues the "action rejected" cue.  It goes through the same bounded
+    // queue, so calling it from headless paths is harmless.
+    void signalError() { emit(sound::Event::Error); }
 
     // ---- persistence (F2 / F5) -------------------------------------------
     // Saves/restores the complete mutable state, including the RNG, so a
@@ -160,6 +172,7 @@ private:
 
     void setPhase(Phase p);
     void info(const std::string& m);
+    void emit(sound::Event e);
 
     PlayerState players_[2];
     std::vector<Card> monte_;
@@ -177,6 +190,7 @@ private:
     bool lastWentOutByMeld_ = false;
     int lastWentOutSeat_ = -1;
     Card lastDrawn_;   // card taken this turn (table or monte), used by the AI
+    std::vector<sound::Event> events_;
 
     uint32_t rnd();
     void shuffle(std::vector<Card>& deck);

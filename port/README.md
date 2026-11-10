@@ -30,6 +30,7 @@ extraída do próprio jogo).
 | F1 ajuda, F3 situação geral em tela cheia; mão do adversário sempre oculta | ✅ |
 | F2 salvar por jogador / F5 restaurar (`<nome>.sav` na pasta do jogo) | ✅ |
 | Tela inicial, continuar jogo gravado ou novo jogo com nome do jogador | ✅ |
+| Efeitos sonoros sintetizados (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro), com volume | ✅ |
 | Modo headless para regressão/diff (inclusive do fluxo inicial) | ✅ |
 
 ## 2. Build
@@ -83,7 +84,7 @@ ctest --test-dir build --output-on-failure
 # ou: .\build\tests\buraco_tests.exe
 ```
 
-### Configuração de vídeo (fase 1)
+### Configuração de vídeo e som (fase 1)
 
 O porte procura um `buraco.cfg` ao lado do `buraco.exe` (pasta portátil). Se
 esse arquivo não existir ou não puder ser gravado, a configuração fica em
@@ -91,7 +92,7 @@ esse arquivo não existir ou não puder ser gravado, a configuração fica em
 `%APPDATA%\buraco\buraco\buraco.cfg`). O arquivo é texto simples:
 
 ```ini
-# Buraco display settings
+# Buraco settings
 version=1
 fullscreen=0
 scale=2
@@ -103,6 +104,8 @@ window_y=0
 maximized=0
 integer_scale=0
 vsync=1
+sound=1
+sound_volume=70
 ```
 
 | Chave | Efeito |
@@ -115,6 +118,8 @@ vsync=1
 | `maximized` | abre maximizada |
 | `integer_scale` | escala inteira (pixel-perfect) |
 | `vsync` | VSync ligado/desligado |
+| `sound` | efeitos sonoros ligados/desligados |
+| `sound_volume` | volume dos efeitos em `0..100` (passos de 10 na tela F9) |
 
 Na inicialização o tamanho é reduzido para caber em 90% da área útil da tela,
 preservando 8:5. O padrão é 2× (1280×800); em telas como 1366×768 ele encolhe
@@ -125,28 +130,30 @@ diagnóstico).
 
 Durante o jogo, `F11` ou `Alt+Enter` alternam entre janela e tela cheia
 (borderless, na resolução da área de trabalho). Ao fechar, o porte grava
-tamanho, posição, maximizada, tela cheia, escala, escala inteira e VSync no
-`buraco.cfg`. Para não sobrescrever as preferências do jogador, a gravação é
-omitida quando a execução usa opções de vídeo na linha de comando
-(`--scale`, `--fullscreen`, `--integer-scale`, `--vsync`) e em execuções de
-demonstração (`--auto ... --gui`).
+tamanho, posição, maximizada, tela cheia, escala, escala inteira, VSync, som e
+volume no `buraco.cfg`. Para não sobrescrever as preferências do jogador, a
+gravação é omitida quando a execução usa opções de vídeo ou som na linha de
+comando (`--scale`, `--fullscreen`, `--integer-scale`, `--vsync`, `--sound`,
+`--volume`) e em execuções de demonstração (`--auto ... --gui`).
 
 Opções de linha de comando relacionadas (válidas só para a execução; não
 alteram o arquivo):
 
 ```powershell
-.\build\buraco.exe --display-info          # mostra config, display e escala calculada
+.\build\buraco.exe --display-info          # mostra config, display, som e escala calculada
 .\build\buraco.exe --scale 3 --vsync off
 .\build\buraco.exe --fullscreen --integer-scale
+.\build\buraco.exe --sound off --volume 40
+.\build\buraco.exe --audio-test            # toca todos os efeitos pelo dispositivo real
 .\build\buraco.exe --config work\meu.cfg --reset-config
 ```
 
 A tela de opções (`F9`) edita tudo isso em tempo real: escala (Auto ou 1×..8×),
-ajuste inteiro/esticado, tela cheia, VSync, iniciar maximizada, centralizar a
-janela e restaurar os padrões. Setas cima/baixo escolhem a linha,
-esquerda/direita alteram o valor, `ENTER` aplica e `F9`/`ESC` fecha. A partida
-fica pausada enquanto a tela está aberta, e as preferências são gravadas no
-`buraco.cfg` ao sair.
+ajuste inteiro/esticado, tela cheia, VSync, iniciar maximizada, som, volume,
+centralizar a janela e restaurar os padrões (vídeo e som). Setas cima/baixo
+escolhem a linha, esquerda/direita alteram o valor (volume em passos de 10%),
+`ENTER` aplica e `F9`/`ESC` fecha. A partida fica pausada enquanto a tela está
+aberta, e as preferências são gravadas no `buraco.cfg` ao sair.
 
 ## 3. Controles
 
@@ -168,7 +175,7 @@ fica pausada enquanto a tela está aberta, e as preferências são gravadas no
 | F3 | situação geral em tela cheia (partidas, vitórias, pontos, mãos, jogos, mesa e monte) |
 | F2 | grava a partida em `<nome do jogador>.sav` (ou `<nome>2.sav`, `<nome>3.sav`, ...) |
 | F5 | restaura a partida gravada no caminho atual |
-| F9 | opções de vídeo: escala, ajuste, tela cheia, VSync, maximizada e posição |
+| F9 | opções de vídeo e som: escala, ajuste, tela cheia, VSync, maximizada, som, volume e posição |
 | F11 / Alt+Enter | alterna janela / tela cheia (a preferência é salva ao sair) |
 | ESC | limpa a seleção; sem seleção, encerra (na tela inicial, encerra) |
 
@@ -342,11 +349,12 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 ## 8. Validação
 
-* `ctest --test-dir build` roda os 115 casos de teste (cartas, máquina de
+* `ctest --test-dir build` roda os 131 casos de teste (cartas, máquina de
   turnos, save/load, nomes de arquivo, invariantes, tela, configuração de
-  vídeo, cálculo e estado da janela, tela de opções). O caso de tela
-  compara o hash das 25 linhas com a saída capturada de `--auto 400 --seed
-  1234`, então a divisão do antigo `main.cpp` em módulos não mudou um pixel.
+  vídeo e som, cálculo e estado da janela, tela de opções, síntese e eventos
+  sonoros). O caso de tela compara o hash das 25 linhas com a saída capturada
+  de `--auto 400 --seed 1234`, então a divisão do antigo `main.cpp` em módulos
+  não mudou um pixel.
 * `shots/33_deal720.png` (original) vs. `shots/41_port_deal.png` (porte):
   mesma distribuição de linhas, mesma fan vertical de 2 colunas por carta.
 * `--check 20000` fecha partidas inteiras nos seeds 99, 777, 12345, 4242, 7,

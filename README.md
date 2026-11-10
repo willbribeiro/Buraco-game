@@ -143,7 +143,7 @@ renderização determinística da tela. Detalhes em
 
 ## Roadmap sugerido
 
-- [ ] Som
+- [x] Som
 - [ ] Modo multi-jogador (rede/hot-seat)
 - [ ] Tradução da interface
 - [x] Opções de janela/redimensionamento

@@ -1,8 +1,8 @@
 // Persistent user configuration.
 //
 // The file is a small, line-oriented `key=value` document so it can be edited
-// by hand and diffed.  Phase 1 stores display options only; future settings
-// (language, volume) can be added without changing the parser contract:
+// by hand and diffed.  It stores the display and sound options; future
+// settings (language) can be added without changing the parser contract:
 // unknown keys are ignored and every value is clamped to a safe range.
 #pragma once
 
@@ -25,9 +25,17 @@ struct DisplaySettings {
     friend bool operator==(const DisplaySettings&, const DisplaySettings&) = default;
 };
 
+struct SoundSettings {
+    bool enabled = true;
+    int volume = 70;  // 0..100
+
+    friend bool operator==(const SoundSettings&, const SoundSettings&) = default;
+};
+
 struct Settings {
     int version = 1;
     DisplaySettings display;
+    SoundSettings sound;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };

@@ -83,6 +83,7 @@ bool normalize(Settings& settings) {
         std::clamp(settings.display.windowX, kMinPosition, kMaxPosition);
     settings.display.windowY =
         std::clamp(settings.display.windowY, kMinPosition, kMaxPosition);
+    settings.sound.volume = std::clamp(settings.sound.volume, 0, 100);
     return !(settings == before);
 }
 
@@ -162,6 +163,12 @@ bool parse(const std::string& text, Settings& out, std::string* warning) {
         } else if (key == "vsync") {
             if (parseBool(value, flag)) out.display.vsync = flag;
             else { warn(warning, lineNumber, "invalid vsync '" + value + "'"); ok = false; }
+        } else if (key == "sound") {
+            if (parseBool(value, flag)) out.sound.enabled = flag;
+            else { warn(warning, lineNumber, "invalid sound '" + value + "'"); ok = false; }
+        } else if (key == "sound_volume") {
+            if (parseInt(value, number)) out.sound.volume = number;
+            else { warn(warning, lineNumber, "invalid sound_volume '" + value + "'"); ok = false; }
         }
         // Unknown keys are intentionally ignored for forward compatibility.
     }
@@ -172,7 +179,7 @@ bool parse(const std::string& text, Settings& out, std::string* warning) {
 
 std::string serialize(const Settings& settings) {
     std::ostringstream out;
-    out << "# Buraco display settings\n";
+    out << "# Buraco settings\n";
     out << "version=" << settings.version << '\n';
     out << "fullscreen=" << (settings.display.fullscreen ? 1 : 0) << '\n';
     out << "scale=" << settings.display.scale << '\n';
@@ -184,6 +191,8 @@ std::string serialize(const Settings& settings) {
     out << "maximized=" << (settings.display.maximized ? 1 : 0) << '\n';
     out << "integer_scale=" << (settings.display.integerScale ? 1 : 0) << '\n';
     out << "vsync=" << (settings.display.vsync ? 1 : 0) << '\n';
+    out << "sound=" << (settings.sound.enabled ? 1 : 0) << '\n';
+    out << "sound_volume=" << settings.sound.volume << '\n';
     return out.str();
 }
 

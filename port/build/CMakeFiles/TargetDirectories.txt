@@ -1,3 +1,0 @@
-C:/Users/ventoy/Documents/Buraco/port/build/CMakeFiles/buraco.dir
-C:/Users/ventoy/Documents/Buraco/port/build/CMakeFiles/edit_cache.dir
-C:/Users/ventoy/Documents/Buraco/port/build/CMakeFiles/rebuild_cache.dir

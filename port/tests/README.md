@@ -33,10 +33,11 @@ O script `run_tests.ps1` faz o build e a execução em um passo.
 | `cards_test.cpp` | ids/naipes, pontos, curingas, glifos, construção de jogos |
 | `game_test.cpp` | distribuição, compra, jogos, morto, batida, pontuação, IA, save/load |
 | `save_test.cpp` | `sanitizeName`, nomes reservados do Windows, numeração de saves |
-| `config_test.cpp` | arquivo `buraco.cfg`, defaults, clamps, valores inválidos e round-trip |
+| `config_test.cpp` | arquivo `buraco.cfg`, defaults de vídeo/som, clamps, valores inválidos e round-trip |
 | `window_scale_test.cpp` | tamanho da janela por escala, encaixe na área útil e escala inteira |
 | `window_state_test.cpp` | posição fora dos monitores, resize/move do usuário, maximizada |
-| `options_test.cpp` | navegação da tela F9, escala, toggles, reset e desenho |
+| `options_test.cpp` | navegação da tela F9, escala, toggles, som/volume, reset e desenho |
+| `sound_test.cpp` | cues, síntese, envelope, silêncio e eventos emitidos pelo `Game` |
 | `report_test.cpp` | `stateLine`/`strictLine` e `checkInvariants` (108 cartas) |
 | `ui_test.cpp` | geometria da tela, telas de ajuda/nome/contagem e hash dourado |
 
@@ -66,8 +67,13 @@ O script `run_tests.ps1` faz o build e a execução em um passo.
   acompanhada. A lógica pura fica em `window_state.*`; o SDL só fornece os
   eventos e retângulos dos monitores.
 * **Opções (F9)**: navegação circular, escala Auto/1×..8×, toggles de ajuste
-  inteiro, tela cheia, VSync e maximizada, centralizar, restaurar padrões e
-  fechar; o desenho mostra a linha selecionada e os valores atuais.
+  inteiro, tela cheia, VSync e maximizada, som ligado/desligado e volume em
+  passos de 10%, centralizar, restaurar padrões de vídeo e som e fechar; o
+  desenho mostra a linha selecionada e os valores atuais.
+* **Som**: cada cue tem tons e durações estáveis, o envelope ataca/decai, mudo
+  e volume 0 produzem silêncio exato e o `Game` emite os eventos certos
+  (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro)
+  sem afetar save, tela ou RNG.
 
 ## Regressão de comportamento
 

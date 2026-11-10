@@ -13,11 +13,13 @@
 #include <SDL.h>
 
 #include "game.h"
+#include "audio.h"
 #include "config.h"
 #include "options.h"
 #include "renderer.h"
 #include "report.h"
 #include "save.h"
+#include "sound.h"
 #include "ui.h"
 #include "video.h"
 #include "window_scale.h"
@@ -138,6 +140,8 @@ static int printDisplayInfo(const config::Settings& settings, const std::string&
     std::printf("maximized: %s\n", settings.display.maximized ? "on" : "off");
     std::printf("integer scale: %s\n", settings.display.integerScale ? "on" : "off");
     std::printf("vsync: %s\n", settings.display.vsync ? "on" : "off");
+    std::printf("sound: %s\n", settings.sound.enabled ? "on" : "off");
+    std::printf("volume: %d%%\n", settings.sound.volume);
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::printf("display: unavailable (%s)\n", SDL_GetError());
@@ -179,6 +183,41 @@ static int printDisplayInfo(const config::Settings& settings, const std::string&
     return 0;
 }
 
+static int printAudioTest() {
+    if (SDL_Init(0) != 0) {
+        std::fprintf(stderr, "audio: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    audio::Output out;
+    std::string error;
+    if (!out.init(&error)) {
+        std::fprintf(stderr, "audio: %s\n", error.c_str());
+        SDL_Quit();
+        return 1;
+    }
+    std::printf("audio device: %d Hz, %d channel(s)\n", out.sampleRate(), out.channels());
+
+    buraco::sound::Synth synth;
+    synth.setSampleRate(out.sampleRate());
+    for (int i = 0; i < buraco::sound::kEventCount; ++i) {
+        const buraco::sound::Event ev = buraco::sound::Event(i);
+        int cueMs = 0;
+        for (const buraco::sound::Tone& tone : buraco::sound::cue(ev)) cueMs += int(tone.ms);
+
+        synth.play(ev);
+        out.pump(synth, cueMs + 100);
+        const Uint32 start = SDL_GetTicks();
+        while (out.queuedMs() > 0 && SDL_GetTicks() - start < 3000) SDL_Delay(5);
+        std::printf("%-10s %4d ms\n", buraco::sound::name(ev), cueMs);
+    }
+
+    out.shutdown();
+    SDL_Quit();
+    std::printf("audio test ok\n");
+    return 0;
+}
+
 int main(int argc, char** argv) {
     std::string scriptPath;
     std::string outPath = "screen.txt";
@@ -193,10 +232,13 @@ int main(int argc, char** argv) {
     bool configPathSet = false;
     bool resetConfig = false;
     bool displayInfo = false;
+    bool audioTest = false;
     std::optional<int> cliScale;
     std::optional<bool> cliFullscreen;
     std::optional<bool> cliIntegerScale;
     std::optional<bool> cliVsync;
+    std::optional<bool> cliSound;
+    std::optional<int> cliVolume;
     std::string cliError;
 
     for (int i = 1; i < argc; ++i) {
@@ -240,9 +282,23 @@ int main(int argc, char** argv) {
             bool value = true;
             if (parseOnOff(argv[++i], value)) cliVsync = value;
             else cliError = "invalid --vsync value (use on or off)";
+        } else if (a == "--sound" && i + 1 < argc) {
+            bool value = true;
+            if (parseOnOff(argv[++i], value)) cliSound = value;
+            else cliError = "invalid --sound value (use on or off)";
+        } else if (a == "--volume" && i + 1 < argc) {
+            char* end = nullptr;
+            const long value = std::strtol(argv[++i], &end, 10);
+            if (end && *end == '\0' && value >= 0 && value <= 100)
+                cliVolume = int(value);
+            else
+                cliError = "invalid --volume value (use 0..100)";
         } else if (a == "--display-info") {
             displayInfo = true;
-        } else if (a == "--config" || a == "--scale" || a == "--vsync") {
+        } else if (a == "--audio-test") {
+            audioTest = true;
+        } else if (a == "--config" || a == "--scale" || a == "--vsync" ||
+                   a == "--sound" || a == "--volume") {
             cliError = "missing value for " + a;
         }
     }
@@ -250,11 +306,16 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "%s\n", cliError.c_str());
         return 2;
     }
-    // Display flags are a one-run experiment: they override the file but are
-    // not written back on exit, so testing --fullscreen or --scale never
-    // rewrites the player's saved preferences.
+    // Device self-test: renders every cue through the real audio path and
+    // waits for it to play.  It never opens a window or touches the config.
+    if (audioTest) return printAudioTest();
+    // Display and sound flags are one-run experiments: they override the file
+    // but are not written back on exit, so testing --fullscreen, --scale or
+    // --volume never rewrites the player's saved preferences.
     const bool displayOverride = cliScale.has_value() || cliFullscreen.has_value() ||
                                  cliIntegerScale.has_value() || cliVsync.has_value();
+    const bool settingsOverride = displayOverride || cliSound.has_value() ||
+                                  cliVolume.has_value();
     bool headless = (!scriptPath.empty() || autoSteps > 0) && !guiAfterAuto;
     // Every batch mode (script, auto, check, savetest) keeps the historical
     // default seed so failures are reproducible; only the windowed game picks
@@ -281,6 +342,8 @@ int main(int argc, char** argv) {
         if (cliFullscreen) cfg.display.fullscreen = *cliFullscreen;
         if (cliIntegerScale) cfg.display.integerScale = *cliIntegerScale;
         if (cliVsync) cfg.display.vsync = *cliVsync;
+        if (cliSound) cfg.sound.enabled = *cliSound;
+        if (cliVolume) cfg.sound.volume = *cliVolume;
         config::normalize(cfg);
         if (!configWarning.empty())
             std::fprintf(stderr, "config: %s", configWarning.c_str());
@@ -399,8 +462,10 @@ int main(int argc, char** argv) {
         if (sym == SDLK_F2) {
             if (game.saveTo(save::path()))
                 game.setMessage("Jogo gravado em " + save::path() + ".");
-            else
+            else {
                 game.setMessage("Nao consegui gravar o jogo.");
+                game.signalError();
+            }
             return;
         }
         if (sym == SDLK_F5) {
@@ -412,6 +477,7 @@ int main(int argc, char** argv) {
                 game.setMessage("Jogo restaurado.");
             } else {
                 game.setMessage("Nao consegui restaurar o jogo.");
+                game.signalError();
             }
             return;
         }
@@ -483,11 +549,17 @@ int main(int argc, char** argv) {
         if (ui.layChoice) {
             if (sym == SDLK_a || sym == SDLK_s || sym == SDLK_y) {
                 const std::string err = game.layMeld(ui.layCards, ui.layTarget);
-                if (!err.empty()) game.setMessage(err);
+                if (!err.empty()) {
+                    game.setMessage(err);
+                    game.signalError();
+                }
                 resetSelection();
             } else if (sym == SDLK_n) {
                 const std::string err = game.layMeld(ui.layCards, buraco::Game::kNewMeld);
-                if (!err.empty()) game.setMessage(err);
+                if (!err.empty()) {
+                    game.setMessage(err);
+                    game.signalError();
+                }
                 resetSelection();
             } else if (sym == SDLK_ESCAPE) {
                 // Keep the cards selected so the player can adjust them.
@@ -567,7 +639,10 @@ int main(int argc, char** argv) {
                                            ? opts.targets.front()
                                            : (opts.canCreate ? buraco::Game::kNewMeld : -1);
                     const std::string err = game.layMeld(chosen, target);
-                    if (!err.empty()) game.setMessage(err);
+                    if (!err.empty()) {
+                        game.setMessage(err);
+                        game.signalError();
+                    }
                     resetSelection();
                     return;
                 }
@@ -576,7 +651,7 @@ int main(int argc, char** argv) {
                     if (hand.empty()) return;
                     const int idx = std::clamp(ui.cursor, 0, int(hand.size()) - 1);
                     const buraco::Card card = hand[idx];
-                    game.discardCard(card);
+                    if (!game.discardCard(card)) game.signalError();
                     resetSelection();
                     return;
                 }
@@ -818,6 +893,17 @@ int main(int argc, char** argv) {
     if (!guiAfterAuto) game.setMessage("Embaralhando. Por favor, corte... <ENTER>");
     resetSelection();
 
+    // Sound is part of the window presentation only: headless modes never open
+    // a device.  A missing device is reported once and the game stays silent.
+    audio::Output audioOut;
+    std::string audioError;
+    const bool audioReady = audioOut.init(&audioError);
+    if (!audioReady) std::fprintf(stderr, "audio: %s\n", audioError.c_str());
+    buraco::sound::Synth synth;
+    synth.setSampleRate(audioOut.sampleRate());
+    synth.setEnabled(cfg.sound.enabled);
+    synth.setVolume(cfg.sound.volume);
+
     bool optionsOpen = false;
     options::State optionsState;
 
@@ -876,12 +962,15 @@ int main(int argc, char** argv) {
                     }
                     if (optionKey) {
                         const options::Action action =
-                            options::handleKey(optionsState, *optionKey, cfg.display);
+                            options::handleKey(optionsState, *optionKey, cfg);
                         if (action == options::Action::Apply ||
-                            action == options::Action::Reset)
+                            action == options::Action::Reset) {
                             renderer.apply(cfg.display);
-                        else if (action == options::Action::Close)
+                            synth.setEnabled(cfg.sound.enabled);
+                            synth.setVolume(cfg.sound.volume);
+                        } else if (action == options::Action::Close) {
                             optionsOpen = false;
+                        }
                     }
                 } else {
                     key(sym);
@@ -912,15 +1001,26 @@ int main(int argc, char** argv) {
         }
 
         ui::draw(video, game, ui);
-        if (optionsOpen) ui::drawOptions(video, cfg.display, optionsState.selected);
+        if (optionsOpen) ui::drawOptions(video, cfg, optionsState.selected);
         renderer.present(video, double(now) / 1000.0);
+
+        // Drain the cues produced by this frame (keys, AI turns, scoring) and
+        // keep a few milliseconds queued in the device.
+        if (audioReady) {
+            for (buraco::sound::Event ev : game.takeEvents()) synth.play(ev);
+            audioOut.pump(synth);
+        } else {
+            game.takeEvents();
+        }
         SDL_Delay(8);
     }
+
+    audioOut.shutdown();
 
     // Persist the window state the player ended up with.  Demo runs and
     // command-line overrides skip this so automated screenshots and one-off
     // experiments never rewrite the real configuration.
-    if (!demo && !displayOverride) {
+    if (!demo && !settingsOverride) {
         std::string usedPath;
         std::string error;
         bool saved = false;

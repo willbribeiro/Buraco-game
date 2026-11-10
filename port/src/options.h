@@ -1,8 +1,9 @@
 // F9 options screen state and key handling.
 //
-// The screen only edits config::DisplaySettings; rendering lives in ui.cpp and
-// applying the result is the caller's job (Renderer::apply).  Keeping the
-// navigation here makes it testable without SDL or a game in progress.
+// The screen edits config::Settings; rendering lives in ui.cpp and applying the
+// result is the caller's job (Renderer::apply for video, Synth for sound).
+// Keeping the navigation here makes it testable without SDL or a game in
+// progress.
 #pragma once
 
 #include "config.h"
@@ -17,8 +18,10 @@ enum class Row {
     Fullscreen,
     Vsync,
     Maximized,
+    Sound,         // sound effects on/off
+    Volume,        // 0..100, in steps of 10
     Center,        // action: center the window
-    Reset,         // action: restore display defaults
+    Reset,         // action: restore video and sound defaults
     Close,         // action: leave the screen
     Count,
 };
@@ -33,17 +36,17 @@ enum class Key { Up, Down, Left, Right, Enter, Escape };
 
 enum class Action {
     None,
-    Apply,   // settings changed, call Renderer::apply
-    Reset,   // display defaults restored, call Renderer::apply
+    Apply,   // settings changed: apply video and sound
+    Reset,   // defaults restored: apply video and sound
     Close,   // leave the options screen
 };
 
 // Moves the selection and edits the row under it.  Arrow keys change values;
 // ENTER activates the row (toggles, centers, resets or closes).
-Action handleKey(State& state, Key key, config::DisplaySettings& settings);
+Action handleKey(State& state, Key key, config::Settings& settings);
 
 std::string label(Row row);
-std::string value(Row row, const config::DisplaySettings& settings);
+std::string value(Row row, const config::Settings& settings);
 bool isAction(Row row);
 
 }  // namespace options

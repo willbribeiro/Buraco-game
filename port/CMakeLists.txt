@@ -19,6 +19,7 @@ add_library(buraco_core STATIC
     src/game.cpp
     src/game_save.cpp
     src/options.cpp
+    src/sound.cpp
     src/ui.cpp
     src/video.cpp
     src/window_scale.cpp
@@ -30,6 +31,7 @@ target_include_directories(buraco_core PUBLIC src)
 target_link_libraries(buraco_core PUBLIC SDL2::SDL2)
 
 add_executable(buraco
+    src/audio.cpp
     src/main.cpp
     src/renderer.cpp)
 

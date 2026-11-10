@@ -48,6 +48,8 @@ std::string label(Row row) {
         case Row::Fullscreen: return "Tela cheia";
         case Row::Vsync: return "VSync";
         case Row::Maximized: return "Iniciar maximizada";
+        case Row::Sound: return "Som";
+        case Row::Volume: return "Volume";
         case Row::Center: return "Centralizar janela";
         case Row::Reset: return "Restaurar padroes";
         case Row::Close: return "Voltar ao jogo";
@@ -56,20 +58,24 @@ std::string label(Row row) {
     return {};
 }
 
-std::string value(Row row, const config::DisplaySettings& settings) {
+std::string value(Row row, const config::Settings& settings) {
     switch (row) {
         case Row::Scale:
-            return scaleText(settings);
+            return scaleText(settings.display);
         case Row::Adjustment:
-            return settings.integerScale ? "Inteiro (pixel-perfect)" : "Esticado";
+            return settings.display.integerScale ? "Inteiro (pixel-perfect)" : "Esticado";
         case Row::Fullscreen:
-            return settings.fullscreen ? "Sim" : "Nao";
+            return settings.display.fullscreen ? "Sim" : "Nao";
         case Row::Vsync:
-            return settings.vsync ? "Sim" : "Nao";
+            return settings.display.vsync ? "Sim" : "Nao";
         case Row::Maximized:
-            return settings.maximized ? "Sim" : "Nao";
+            return settings.display.maximized ? "Sim" : "Nao";
+        case Row::Sound:
+            return settings.sound.enabled ? "Sim" : "Nao";
+        case Row::Volume:
+            return std::to_string(settings.sound.volume) + "%";
         case Row::Center:
-            return settings.centered ? "Centralizada" : "Livre (ENTER centraliza)";
+            return settings.display.centered ? "Centralizada" : "Livre (ENTER centraliza)";
         case Row::Reset:
             return "ENTER";
         case Row::Close:
@@ -80,7 +86,7 @@ std::string value(Row row, const config::DisplaySettings& settings) {
     return {};
 }
 
-Action handleKey(State& state, Key key, config::DisplaySettings& settings) {
+Action handleKey(State& state, Key key, config::Settings& settings) {
     if (key == Key::Up) {
         state.selected = (state.selected + kRowCount - 1) % kRowCount;
         return Action::None;
@@ -97,29 +103,38 @@ Action handleKey(State& state, Key key, config::DisplaySettings& settings) {
 
     switch (row) {
         case Row::Scale:
-            settings.scale = nextScale(settings.scale, key == Key::Left ? -1 : 1);
+            settings.display.scale =
+                nextScale(settings.display.scale, key == Key::Left ? -1 : 1);
             return Action::Apply;
         case Row::Adjustment:
-            settings.integerScale = nextFlag(settings.integerScale, key);
+            settings.display.integerScale = nextFlag(settings.display.integerScale, key);
             return Action::Apply;
         case Row::Fullscreen:
-            settings.fullscreen = nextFlag(settings.fullscreen, key);
+            settings.display.fullscreen = nextFlag(settings.display.fullscreen, key);
             return Action::Apply;
         case Row::Vsync:
-            settings.vsync = nextFlag(settings.vsync, key);
+            settings.display.vsync = nextFlag(settings.display.vsync, key);
             return Action::Apply;
         case Row::Maximized:
-            settings.maximized = nextFlag(settings.maximized, key);
+            settings.display.maximized = nextFlag(settings.display.maximized, key);
             return Action::Apply;
+        case Row::Sound:
+            settings.sound.enabled = nextFlag(settings.sound.enabled, key);
+            return Action::Apply;
+        case Row::Volume: {
+            const int step = key == Key::Left ? -10 : 10;
+            settings.sound.volume = std::clamp(settings.sound.volume + step, 0, 100);
+            return Action::Apply;
+        }
         case Row::Center:
             if (key == Key::Enter || key == Key::Left || key == Key::Right) {
-                settings.centered = true;
+                settings.display.centered = true;
                 return Action::Apply;
             }
             return Action::None;
         case Row::Reset:
             if (key == Key::Enter) {
-                settings = config::defaults().display;
+                settings = config::defaults();
                 return Action::Reset;
             }
             return Action::None;

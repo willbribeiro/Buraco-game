@@ -6,10 +6,21 @@
 namespace buraco {
 namespace {
 
+// Bounded so a long headless run never grows the queue: nobody drains events
+// in --auto/--check, and the oldest ones are irrelevant by then.
+constexpr size_t kMaxSoundEvents = 64;
+
 bool hasCanastra(const PlayerState& p) {
     for (const Meld& m : p.melds)
         if (!m.empty() && m.canastra()) return true;
     return false;
+}
+
+int canastraCount(const PlayerState& p) {
+    int n = 0;
+    for (const Meld& m : p.melds)
+        if (!m.empty() && m.canastra()) ++n;
+    return n;
 }
 
 void removeCard(std::vector<Card>& hand, const Card& c) {
@@ -74,6 +85,7 @@ void Game::newHand() {
     deck.reserve(DECK_SIZE);
     for (uint8_t id = 1; id <= DECK_SIZE; ++id) deck.push_back(makeCard(id));
     shuffle(deck);
+    emit(sound::Event::Shuffle);
 
     for (int i = 0; i < HAND_SIZE; ++i) {
         players_[0].hand.push_back(deck.back());
@@ -86,6 +98,7 @@ void Game::newHand() {
         deck.pop_back();
     }
     monte_ = deck;
+    emit(sound::Event::Deal);
 
     ++handNumber_;
     lastWentOutSeat_ = -1;
@@ -104,6 +117,17 @@ void Game::setPhase(Phase p) {
 }
 
 void Game::info(const std::string& m) { message_ = m; }
+
+void Game::emit(sound::Event e) {
+    if (events_.size() >= kMaxSoundEvents) events_.erase(events_.begin());
+    events_.push_back(e);
+}
+
+std::vector<sound::Event> Game::takeEvents() {
+    std::vector<sound::Event> out;
+    out.swap(events_);
+    return out;
+}
 
 bool Game::canTakeDiscard() const { return !discard_.empty(); }
 
@@ -125,6 +149,7 @@ bool Game::draw(bool fromTable) {
         p.hand.insert(p.hand.end(), discard_.begin(), discard_.end());
         discard_.clear();
         info(current_ == 0 ? "Voce comprou a mesa." : "Estou comprando a mesa.");
+        emit(sound::Event::TakePile);
     } else {
         if (monte_.empty()) {
             // The original's deck is a 108-slot array and FUN_1000_2a03 returns
@@ -138,6 +163,7 @@ bool Game::draw(bool fromTable) {
         p.hand.push_back(monte_.back());
         monte_.pop_back();
         info(current_ == 0 ? "Voce comprou do monte." : "Estou comprando do monte.");
+        emit(sound::Event::DrawDeck);
     }
     prompt_ = Prompt::None;
     setPhase(Phase::Play);
@@ -177,6 +203,10 @@ std::string Game::layMeld(const std::vector<Card>& cards, int target) {
     if (wouldEmpty && p.tookMorto && !hasCanastra(p))
         return "Voce nao pode bater porque nao tem canastra.";
 
+    // A completion is audible only when a meld crossed the canastra mark now;
+    // growing an existing canastra stays a plain meld sound.
+    const int canastraBefore = canastraCount(p);
+
     auto takeFromHand = [&p, &cards]() {
         for (const Card& c : cards) removeCard(p.hand, c);
     };
@@ -189,6 +219,8 @@ std::string Game::layMeld(const std::vector<Card>& cards, int target) {
     auto commit = [&](const char* msg) {
         takeFromHand();
         info(msg);
+        emit(sound::Event::LayMeld);
+        if (canastraCount(p) > canastraBefore) emit(sound::Event::Canastra);
         return finish();
     };
 
@@ -260,6 +292,7 @@ bool Game::takeMorto() {
     }
     p.tookMorto = true;
     info("Voce pegou o morto.");
+    emit(sound::Event::Morto);
     return true;
 }
 
@@ -272,6 +305,7 @@ bool Game::discardCard(const Card& card) {
 
     p.hand.erase(it);
     discard_.push_back(card);
+    emit(sound::Event::Discard);
 
     if (p.hand.empty()) {
         if (takeMorto()) {
@@ -311,6 +345,7 @@ void Game::beginTurn() {
 }
 
 void Game::endHand() {
+    emit(sound::Event::Batida);
     // Cards left in the morto are not added to any hand: the original only
     // charges the flat 100 point penalty for each player who never took it.
     morto_.clear();

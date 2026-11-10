@@ -533,13 +533,13 @@ void draw(dos::Video& v, const Game& g, const UiState& ui) {
     if (ui.help) drawHelp(v);
 }
 
-void drawOptions(dos::Video& v, const config::DisplaySettings& settings,
+void drawOptions(dos::Video& v, const config::Settings& settings,
                  int selectedRow) {
     clear(v);
     drawFrame(v, 1, 78, 1, 23);
     puts(v, 0, 0, "BURACO - opcoes", DIM);
 
-    static const int kRows[options::kRowCount] = {3, 4, 5, 6, 7, 9, 10, 11};
+    static const int kRows[options::kRowCount] = {3, 4, 5, 6, 7, 9, 10, 12, 13, 14};
     for (int i = 0; i < options::kRowCount; ++i) {
         const options::Row row = static_cast<options::Row>(i);
         const bool selected = i == selectedRow;
@@ -550,13 +550,13 @@ void drawOptions(dos::Video& v, const config::DisplaySettings& settings,
         if (!text.empty()) puts(v, 27, kRows[i], text, attr);
     }
 
-    puts(v, 3, 14, "Setas cima/baixo escolhem; esquerda/direita alteram.", DIM);
-    puts(v, 3, 15, "ENTER aplica.  F9 ou ESC fecha esta tela.", DIM);
-    puts(v, 3, 16, "As preferencias sao gravadas no buraco.cfg ao sair.", DIM);
-    puts(v, 3, 18, "1x..8x = 640x400 vezes a escala.  Auto usa o tamanho salvo", DIM);
-    puts(v, 3, 19, "e reduz para 90% da area util da tela.", DIM);
-    if (settings.integerScale)
-        puts(v, 3, 21, "Modo inteiro: a imagem pode cair para 1x em telas pequenas.", WILD);
+    puts(v, 3, 16, "Setas cima/baixo escolhem; esquerda/direita alteram.", DIM);
+    puts(v, 3, 17, "ENTER aplica.  F9 ou ESC fecha esta tela.", DIM);
+    puts(v, 3, 18, "Video e som sao gravados no buraco.cfg ao sair.", DIM);
+    puts(v, 3, 20, "1x..8x = 640x400 vezes a escala.  Auto usa o tamanho salvo", DIM);
+    puts(v, 3, 21, "e reduz para 90% da area util.  Volume em passos de 10%.", DIM);
+    if (settings.display.integerScale)
+        puts(v, 3, 22, "Modo inteiro: a imagem pode cair para 1x em telas pequenas.", WILD);
 }
 
 }  // namespace ui

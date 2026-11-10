@@ -64,8 +64,7 @@ struct UiState {
 void draw(dos::Video& v, const buraco::Game& g, const UiState& ui);
 
 // F9 options panel.  It covers the whole 80x25 screen and reads the live
-// display settings; `selectedRow` indexes options::Row.
-void drawOptions(dos::Video& v, const config::DisplaySettings& settings,
-                 int selectedRow);
+// settings; `selectedRow` indexes options::Row.
+void drawOptions(dos::Video& v, const config::Settings& settings, int selectedRow);
 
 }  // namespace ui

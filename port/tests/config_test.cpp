@@ -22,6 +22,12 @@ TEST_CASE("display config defaults match the historical 1280x800 window") {
     CHECK_EQ(s.display.vsync, true);
 }
 
+TEST_CASE("sound config defaults to enabled at 70%") {
+    const Settings s = defaults();
+    CHECK_EQ(s.sound.enabled, true);
+    CHECK_EQ(s.sound.volume, 70);
+}
+
 TEST_CASE("display config serializes and parses every field") {
     Settings expected;
     expected.display.fullscreen = true;
@@ -34,9 +40,13 @@ TEST_CASE("display config serializes and parses every field") {
     expected.display.maximized = true;
     expected.display.integerScale = true;
     expected.display.vsync = false;
+    expected.sound.enabled = false;
+    expected.sound.volume = 35;
 
     const std::string text = serialize(expected);
     CHECK(text.find("window_centered=0") != std::string::npos);
+    CHECK(text.find("sound=0") != std::string::npos);
+    CHECK(text.find("sound_volume=35") != std::string::npos);
 
     Settings parsed;
     std::string warning;
@@ -111,6 +121,38 @@ TEST_CASE("display config accepts boolean spellings") {
     }
 }
 
+TEST_CASE("sound config parses on/off and volume") {
+    Settings parsed;
+    std::string warning;
+    CHECK(parse("sound=off\nsound_volume=25\n", parsed, &warning));
+    CHECK(warning.empty());
+    CHECK_EQ(parsed.sound.enabled, false);
+    CHECK_EQ(parsed.sound.volume, 25);
+
+    CHECK(parse("sound=sim\nsound_volume=0\n", parsed));
+    CHECK_EQ(parsed.sound.enabled, true);
+    CHECK_EQ(parsed.sound.volume, 0);
+}
+
+TEST_CASE("sound config clamps the volume to 0..100") {
+    Settings parsed;
+    CHECK(parse("sound_volume=250\n", parsed));
+    CHECK_EQ(parsed.sound.volume, 100);
+
+    CHECK(parse("sound_volume=-20\n", parsed));
+    CHECK_EQ(parsed.sound.volume, 0);
+}
+
+TEST_CASE("sound config reports invalid values and keeps defaults") {
+    Settings parsed;
+    std::string warning;
+    CHECK(!parse("sound=maybe\nsound_volume=abc\n", parsed, &warning));
+    CHECK(warning.find("sound") != std::string::npos);
+    CHECK(warning.find("sound_volume") != std::string::npos);
+    CHECK_EQ(parsed.sound.enabled, true);
+    CHECK_EQ(parsed.sound.volume, 70);
+}
+
 TEST_CASE("display config loads and saves a file") {
     const std::string path = testutil::tempSavePath("config_roundtrip.cfg");
     std::error_code ignored;
@@ -123,6 +165,8 @@ TEST_CASE("display config loads and saves a file") {
     expected.display.windowHeight = 1200;
     expected.display.integerScale = true;
     expected.display.vsync = false;
+    expected.sound.enabled = false;
+    expected.sound.volume = 45;
 
     std::string error;
     REQUIRE(save(path, expected, &error));
@@ -159,4 +203,8 @@ TEST_CASE("display config normalize reports only real changes") {
     settings.display.scale = 42;
     CHECK(normalize(settings));
     CHECK_EQ(settings.display.scale, 8);
+
+    settings.sound.volume = 150;
+    CHECK(normalize(settings));
+    CHECK_EQ(settings.sound.volume, 100);
 }
