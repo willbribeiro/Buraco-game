@@ -54,8 +54,10 @@ void Game::shuffle(std::vector<Card>& deck) {
     }
 }
 
-void Game::newMatch(const std::string& playerName, uint32_t seed) {
+void Game::newMatch(const std::string& playerName, uint32_t seed,
+                    const std::string& opponentName) {
     if (!playerName.empty()) players_[0].name = playerName;
+    if (!opponentName.empty()) players_[1].name = opponentName;
     rng_ = seed ? seed : 0x9E3779B9u;
     for (PlayerState& p : players_) {
         p.total = 0;
@@ -148,7 +150,7 @@ bool Game::draw(bool fromTable) {
         // of the hand, which is also what lastDrawn_ points at below.
         p.hand.insert(p.hand.end(), discard_.begin(), discard_.end());
         discard_.clear();
-        info(current_ == 0 ? "Voce comprou a mesa." : "Estou comprando a mesa.");
+        info(isHuman(current_) ? "Voce comprou a mesa." : "Estou comprando a mesa.");
         emit(sound::Event::TakePile);
     } else {
         if (monte_.empty()) {
@@ -162,7 +164,7 @@ bool Game::draw(bool fromTable) {
         }
         p.hand.push_back(monte_.back());
         monte_.pop_back();
-        info(current_ == 0 ? "Voce comprou do monte." : "Estou comprando do monte.");
+        info(isHuman(current_) ? "Voce comprou do monte." : "Estou comprando do monte.");
         emit(sound::Event::DrawDeck);
     }
     prompt_ = Prompt::None;
@@ -320,7 +322,7 @@ bool Game::discardCard(const Card& card) {
         return true;
     }
 
-    if (current_ == 0) info("Sua vez acabou.");
+    if (isHuman(current_)) info("Sua vez acabou.");
     nextTurn();
     return true;
 }
@@ -334,7 +336,7 @@ void Game::beginTurn() {
     setPhase(Phase::Draw);
     prompt_ = Prompt::None;
     lastDrawn_ = Card{};
-    if (current_ == 0) {
+    if (isHuman(current_)) {
         if (canTakeDiscard())
             info("Comprar a mesa? (S/N)");
         else
@@ -400,7 +402,8 @@ void Game::answerPrompt(bool yes) {
 
 void Game::update(double dt) {
     if (phase_ == Phase::HandOver || phase_ == Phase::MatchOver) return;
-    if (current_ != 1) return;
+    // Only the AI plays on its own; hot-seat seats and remotes wait for input.
+    if (!isAi(current_)) return;
 
     timer_ += dt;
     if (timer_ < 0.7) return;
@@ -409,7 +412,7 @@ void Game::update(double dt) {
 
 void Game::announceTurn() {
     if (phase_ == Phase::HandOver || phase_ == Phase::MatchOver) return;
-    if (current_ != 0) {
+    if (!isHuman(current_)) {
         message_ = "Agora e minha vez.";
         return;
     }
@@ -653,7 +656,7 @@ void Game::aiDiscard() {
         }
     }
     const Card card = me.hand[bestIdx];
-    info(current_ == 0 ? "Voce descartou." : "Eu vou descartar.");
+    info(isHuman(current_) ? "Voce descartou." : "Eu vou descartar.");
     discardCard(card);
 }
 

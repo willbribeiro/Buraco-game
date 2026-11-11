@@ -151,9 +151,18 @@ alteram o arquivo):
 .\build\buraco.exe --scale 3 --vsync off
 .\build\buraco.exe --fullscreen --integer-scale
 .\build\buraco.exe --sound off --volume 40
+.\build\buraco.exe --hotseat               # dois jogadores locais (troca de vez)
 .\build\buraco.exe --audio-test            # toca todos os efeitos pelo dispositivo real
 .\build\buraco.exe --config work\meu.cfg --reset-config
 ```
+
+### Modo hot-seat
+
+`--hotseat` inicia uma partida com os dois assentos controlados pelo teclado
+(`JOGADOR 1` e `JOGADOR 2`). Ao fim de cada vez aparece uma tela de troca: o
+proximo jogador aperta ENTER antes de a mao ser revelada. O modo e gravado no
+save (linha `ctrl`), e saves antigos, sem essa linha, continuam abrindo como a
+partida solo de sempre (jogador x IA).
 
 A tela de opções (`F9`) edita tudo isso em tempo real: escala (Auto ou 1×..8×),
 ajuste inteiro/esticado, tela cheia, VSync, iniciar maximizada, som, volume,
@@ -356,7 +365,7 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 ## 8. Validação
 
-* `ctest --test-dir build` roda os 131 casos de teste (cartas, máquina de
+* `ctest --test-dir build` roda os 139 casos de teste (cartas, máquina de
   turnos, save/load, nomes de arquivo, invariantes, tela, configuração de
   vídeo e som, cálculo e estado da janela, tela de opções, síntese e eventos
   sonoros). O caso de tela compara o hash das 25 linhas com a saída capturada

@@ -483,4 +483,95 @@ TEST_CASE("the prompt enum is persisted") {
     CHECK_EQ(int(g.prompt()), int(Prompt::NewHand));
 }
 
+TEST_CASE("controllers start as human vs AI and can be changed") {
+    Game g;
+    CHECK(g.isHuman(0));
+    CHECK(g.isAi(1));
+    CHECK(!g.isHotseat());
+    CHECK_EQ(int(g.controller(0)), int(Controller::Human));
+    CHECK_EQ(int(g.controller(1)), int(Controller::Ai));
+
+    g.setController(1, Controller::Human);
+    CHECK(g.isHotseat());
+    CHECK(g.isHuman(0));
+    CHECK(g.isHuman(1));
+
+    g.setController(0, Controller::Ai);
+    CHECK(g.isAi(0));
+    CHECK(!g.isHotseat());
+
+    g.setController(1, Controller::Remote);
+    CHECK_EQ(int(g.controller(1)), int(Controller::Remote));
+    CHECK(!g.isHuman(1));
+    CHECK(!g.isAi(1));
+}
+
+TEST_CASE("update only plays an AI seat") {
+    Game g;
+    g.newMatch("Ana", 7u);
+    CHECK_EQ(g.current(), 0);
+    const size_t dealt = g.player(0).hand.size();
+
+    // Seat 0 is human: time passing must not take a card for it.
+    g.update(5.0);
+    CHECK_EQ(int(g.phase()), int(Phase::Draw));
+    CHECK_EQ(g.player(0).hand.size(), dealt);
+
+    // Once the seat is handed to the AI, the same tick plays its draw phase.
+    g.setController(0, Controller::Ai);
+    g.update(5.0);
+    CHECK_EQ(int(g.phase()), int(Phase::Play));
+    CHECK_EQ(g.player(0).hand.size(), dealt + 1);
+}
+
+TEST_CASE("update pauses in a hot-seat match") {
+    Game g;
+    g.newMatch("Ana", 9u, "Bia");
+    g.setController(0, Controller::Human);
+    g.setController(1, Controller::Human);
+    const size_t hand0 = g.player(0).hand.size();
+    const size_t hand1 = g.player(1).hand.size();
+
+    g.update(10.0);
+    CHECK_EQ(int(g.phase()), int(Phase::Draw));
+    CHECK_EQ(g.player(0).hand.size(), hand0);
+    CHECK_EQ(g.player(1).hand.size(), hand1);
+}
+
+TEST_CASE("save/load keeps the per-seat controllers") {
+    Game g;
+    g.newMatch("Ana", 5u, "Bia");
+    g.setController(0, Controller::Human);
+    g.setController(1, Controller::Human);
+    const std::string path = testutil::tempSavePath("hotseat_ctrl.sav");
+    REQUIRE(g.saveTo(path));
+
+    Game h;
+    REQUIRE(h.loadFrom(path));
+    CHECK(h.isHotseat());
+    CHECK_EQ(h.player(0).name, std::string("Ana"));
+    CHECK_EQ(h.player(1).name, std::string("Bia"));
+}
+
+TEST_CASE("saves without a ctrl line still load as solo") {
+    Game g;
+    g.setController(0, Controller::Human);
+    g.setController(1, Controller::Human);
+    const std::string text = saveHeader() + player0Hand({1, 2, 3});
+    REQUIRE(loadText(g, text, "old_ctrl.sav"));
+    CHECK(g.isHuman(0));
+    CHECK(g.isAi(1));
+    CHECK(!g.isHotseat());
+}
+
+TEST_CASE("loadFrom rejects invalid controller values") {
+    Game g;
+    const std::string before = snapshot(g);
+    const std::string negative = saveHeader() + "ctrl -1 1\n";
+    CHECK(!loadText(g, negative, "bad_ctrl_negative.sav"));
+    const std::string high = saveHeader() + "ctrl 0 9\n";
+    CHECK(!loadText(g, high, "bad_ctrl_high.sav"));
+    CHECK_EQ(snapshot(g), before);
+}
+
 }  // namespace

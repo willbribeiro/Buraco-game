@@ -48,6 +48,12 @@ struct UiState {
     std::vector<bool> selected;
     bool help = false;
     bool status = false;
+    // Seat whose hand is shown at the bottom.  In a solo match this stays 0
+    // (the human), while the AI hand is only ever drawn face-down.
+    int viewSeat = 0;
+    // Hot-seat curtain: set after a turn ends so the next player can take the
+    // keyboard before their cards are revealed.
+    bool handoff = false;
     // Pending "grow an existing meld or lay a new one?" question.  While it is
     // set the selected cards are kept aside and only A/N/ESC are accepted.
     bool layChoice = false;

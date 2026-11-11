@@ -233,6 +233,7 @@ int main(int argc, char** argv) {
     bool resetConfig = false;
     bool displayInfo = false;
     bool audioTest = false;
+    bool hotseat = false;
     std::optional<int> cliScale;
     std::optional<bool> cliFullscreen;
     std::optional<bool> cliIntegerScale;
@@ -295,6 +296,8 @@ int main(int argc, char** argv) {
                 cliError = "invalid --volume value (use 0..100)";
         } else if (a == "--display-info") {
             displayInfo = true;
+        } else if (a == "--hotseat") {
+            hotseat = true;
         } else if (a == "--audio-test") {
             audioTest = true;
         } else if (a == "--config" || a == "--scale" || a == "--vsync" ||
@@ -364,20 +367,63 @@ int main(int argc, char** argv) {
 
     buraco::Game game;
     ui::UiState ui;
+
+    // Starts a fresh match.  Hot-seat uses two local humans with fixed names
+    // for now (the mode/name screen comes in the next phase); solo keeps the
+    // historical {Human, AI} pair and the caller-provided name.
+    auto startMatch = [&](const std::string& name) {
+        // A loaded hot-seat save keeps its mode when a new match is started.
+        if (hotseat || game.isHotseat()) {
+            game.newMatch("JOGADOR 1", seed ? seed : (batch ? 1234u : makeSeed()),
+                          "JOGADOR 2");
+            game.setController(0, buraco::Controller::Human);
+            game.setController(1, buraco::Controller::Human);
+        } else {
+            game.newMatch(name, seed ? seed : (batch ? 1234u : makeSeed()));
+            game.setController(0, buraco::Controller::Human);
+            game.setController(1, buraco::Controller::Ai);
+        }
+        ui.viewSeat = 0;
+        ui.handoff = false;
+    };
+
     if (interactiveStart) {
         ui.screen = ui::UiState::Screen::Intro;
     } else {
-        game.newMatch("JOGADOR", seed ? seed : (batch ? 1234u : makeSeed()));
+        startMatch("JOGADOR");
     }
     bool started = false;
     bool running = true;
 
     auto resetSelection = [&]() {
-        ui.selected.assign(game.player(0).hand.size(), false);
-        ui.cursor = std::clamp(ui.cursor, 0, std::max(0, int(game.player(0).hand.size()) - 1));
+        const std::vector<buraco::Card>& hand = game.player(ui.viewSeat).hand;
+        ui.selected.assign(hand.size(), false);
+        ui.cursor = std::clamp(ui.cursor, 0, std::max(0, int(hand.size()) - 1));
         ui.layChoice = false;
         ui.layTarget = -1;
         ui.layCards.clear();
+    };
+
+    // Hot-seat only: once a turn ends and the next local player is not the one
+    // whose hand is on screen, show the "pass the keyboard" curtain.  ENTER in
+    // `key` moves viewSeat forward; the hand is never revealed before that.
+    auto maybeHandoff = [&]() {
+        if (!game.isHotseat() || !started ||
+            ui.screen != ui::UiState::Screen::Game)
+            return;
+        if (ui.handoff || ui.help || ui.status) return;
+        if (game.phase() == buraco::Phase::HandOver ||
+            game.phase() == buraco::Phase::MatchOver)
+            return;
+        if (!game.isHuman(game.current())) return;
+        if (game.current() != ui.viewSeat) ui.handoff = true;
+    };
+
+    // After loading a save the visible seat follows the save mode: a hot-seat
+    // match shows whoever is to move, while a solo save always shows seat 0.
+    auto syncViewSeat = [&]() {
+        ui.viewSeat = game.isHotseat() ? game.current() : 0;
+        ui.handoff = false;
     };
 
     auto key = [&](SDL_Keycode sym) {
@@ -412,6 +458,7 @@ int main(int argc, char** argv) {
                     ui.help = false;
                     ui.status = false;
                     ui.screen = Screen::Game;
+                    syncViewSeat();
                     resetSelection();
                     game.setMessage("Jogo restaurado.");
                 } else {
@@ -433,13 +480,14 @@ int main(int argc, char** argv) {
             if (sym == SDLK_BACKSPACE) {
                 if (!ui.inputName.empty()) ui.inputName.pop_back();
             } else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
-                if (ui.inputName.empty()) {
+                if (ui.inputName.empty() && !hotseat) {
                     ui.inputError = "Digite um nome antes de continuar.";
                     return;
                 }
                 const std::string name = ui.inputName;
-                if (!savePathSet) save::path() = save::uniquePathForName(name);
-                game.newMatch(name, seed ? seed : makeSeed());
+                if (!savePathSet)
+                    save::path() = save::uniquePathForName(hotseat ? "hotseat" : name);
+                startMatch(name);
                 started = true;
                 ui.help = false;
                 ui.status = false;
@@ -473,6 +521,7 @@ int main(int argc, char** argv) {
                 started = true;
                 ui.help = false;
                 ui.status = false;
+                syncViewSeat();
                 resetSelection();
                 game.setMessage("Jogo restaurado.");
             } else {
@@ -489,6 +538,16 @@ int main(int argc, char** argv) {
             }
             return;
         }
+        if (ui.handoff) {
+            if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
+                ui.viewSeat = game.current();
+                ui.handoff = false;
+                ui.cursor = 0;
+                resetSelection();
+                game.announceTurn();
+            }
+            return;
+        }
         if (ui.help) {
             if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER || sym == SDLK_F1 ||
                 sym == SDLK_ESCAPE)
@@ -502,8 +561,6 @@ int main(int argc, char** argv) {
                 ui.status = false;
             return;
         }
-
-        const int handSize = int(game.player(0).hand.size());
 
         switch (sym) {
             case SDLK_ESCAPE:
@@ -538,12 +595,16 @@ int main(int argc, char** argv) {
             if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
                 const std::string name =
                     game.player(0).name.empty() ? "JOGADOR" : game.player(0).name;
-                game.newMatch(name, seed ? seed : makeSeed());
+                startMatch(name);
                 resetSelection();
             }
             return;
         }
-        if (game.current() != 0) return;  // the AI is playing
+        // Only the local player whose turn it is may act.  In solo this is the
+        // historical "seat 0 only"; in hot-seat both seats are human.
+        if (!game.isHuman(game.current())) return;
+        const int seat = game.current();
+        const int handSize = int(game.player(seat).hand.size());
 
         // "Grow the existing meld or lay a new one?" question.
         if (ui.layChoice) {
@@ -619,9 +680,9 @@ int main(int argc, char** argv) {
                 }
                 if (game.phase() == Phase::Play) {
                     std::vector<buraco::Card> chosen;
-                    for (size_t i = 0; i < ui.selected.size() && i < game.player(0).hand.size();
+                    for (size_t i = 0; i < ui.selected.size() && i < game.player(seat).hand.size();
                          ++i)
-                        if (ui.selected[i]) chosen.push_back(game.player(0).hand[i]);
+                        if (ui.selected[i]) chosen.push_back(game.player(seat).hand[i]);
                     if (chosen.empty()) {
                         game.requestDiscard();
                         return;
@@ -647,7 +708,7 @@ int main(int argc, char** argv) {
                     return;
                 }
                 if (game.phase() == Phase::Discard) {
-                    const auto& hand = game.player(0).hand;
+                    const auto& hand = game.player(seat).hand;
                     if (hand.empty()) return;
                     const int idx = std::clamp(ui.cursor, 0, int(hand.size()) - 1);
                     const buraco::Card card = hand[idx];
@@ -860,17 +921,20 @@ int main(int argc, char** argv) {
                 std::fprintf(out, "# unknown token '%s'\n", tok.c_str());
                 continue;
             }
+            // Headless hot-seat has no curtain: the script drives whichever
+            // human seat is to move.
+            if (game.isHotseat()) ui.viewSeat = game.current();
             key(k);
 
-            // Let the AI play until the turn comes back to the human.
+            // Let the AI play until the turn comes back to a human.
             for (int guard = 0; guard < 40; ++guard) {
                 using buraco::Phase;
                 if (game.phase() == Phase::HandOver || game.phase() == Phase::MatchOver) break;
-                if (game.current() == 0) break;
+                if (game.isHuman(game.current())) break;
                 game.update(0.75);
             }
-            if (started && game.current() == 0 &&
-                int(ui.selected.size()) != int(game.player(0).hand.size()))
+            if (started && game.isHuman(game.current()) &&
+                int(ui.selected.size()) != int(game.player(ui.viewSeat).hand.size()))
                 resetSelection();
 
             ui::draw(video, game, ui);
@@ -991,11 +1055,14 @@ int main(int argc, char** argv) {
 
         // The options panel pauses the match: opening it must not let the AI
         // take a turn while the player is reading the settings.
-        if (!optionsOpen) game.update(dt);
-        if (started && game.current() == 0) {
-            if (int(ui.selected.size()) != int(game.player(0).hand.size()))
+        if (!optionsOpen) {
+            game.update(dt);
+            maybeHandoff();
+        }
+        if (started && !ui.handoff && game.isHuman(game.current())) {
+            if (int(ui.selected.size()) != int(game.player(ui.viewSeat).hand.size()))
                 resetSelection();
-        } else {
+        } else if (!ui.handoff) {
             ui.cursor = 0;
             if (!ui.selected.empty()) std::fill(ui.selected.begin(), ui.selected.end(), false);
         }

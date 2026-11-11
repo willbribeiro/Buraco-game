@@ -28,6 +28,11 @@ enum class Phase {
 
 enum class Prompt { None, TakeDiscard, NewHand };
 
+// Who drives a seat.  `Human` reads the keyboard, `Ai` is played by update()
+// and `Remote` is reserved for the network phase (it never acts on its own).
+// The historical solo match is {Human, Ai}; hot-seat uses {Human, Human}.
+enum class Controller : uint8_t { Human = 0, Ai = 1, Remote = 2 };
+
 struct PlayerState {
     std::string name;
     std::vector<Card> hand;
@@ -42,7 +47,11 @@ class Game {
 public:
     Game();
 
-    void newMatch(const std::string& playerName, uint32_t seed);
+    // `opponentName` is only used by hot-seat, where both seats are played
+    // locally.  Controllers are deliberately not reset here: a mode change is
+    // an explicit setController() call.
+    void newMatch(const std::string& playerName, uint32_t seed,
+                  const std::string& opponentName = "");
     void newHand();
 
     // ---- state -----------------------------------------------------------
@@ -67,6 +76,18 @@ public:
     // who emptied their hand in each of those hands.
     int handsPlayed() const { return handsPlayed_; }
     int wins(int seat) const { return wins_[seat]; }
+
+    // ---- per-seat controllers --------------------------------------------
+    Controller controller(int seat) const { return controllers_[seat]; }
+    void setController(int seat, Controller c) {
+        if (seat >= 0 && seat < 2) controllers_[seat] = c;
+    }
+    bool isHuman(int seat) const { return controllers_[seat] == Controller::Human; }
+    bool isAi(int seat) const { return controllers_[seat] == Controller::Ai; }
+    bool isHotseat() const {
+        return controllers_[0] == Controller::Human &&
+               controllers_[1] == Controller::Human;
+    }
     int meldCount(int seat) const {
         int n = 0;
         for (const Meld& m : players_[seat].melds)
@@ -175,6 +196,7 @@ private:
     void emit(sound::Event e);
 
     PlayerState players_[2];
+    Controller controllers_[2] = {Controller::Human, Controller::Ai};
     std::vector<Card> monte_;
     std::vector<Card> discard_;
     std::vector<Card> morto_;

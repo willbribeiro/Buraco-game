@@ -147,11 +147,15 @@ inline void drawPiles(dos::Video& v, const Game& g) {
 }
 
 inline void drawMelds(dos::Video& v, const Game& g, const UiState& ui) {
-    static const char* kHeader[2] = {"SEUS JOGOS", "MEUS JOGOS"};
     const int col[2] = {COL_MELD_L, COL_MELD_R};
     const int maxCol[2] = {37, 78};
     const int rows = ROW_RULE3 - ROW_MELD;
     for (int seat = 0; seat < 2; ++seat) {
+        // The viewed seat always sits on the left under "SEUS JOGOS", so a
+        // hot-seat player sees their own melds where the solo player does.
+        const bool mine = seat == ui.viewSeat;
+        const int slot = mine ? 0 : 1;
+        const int x = col[slot];
         const auto& melds = g.player(seat).melds;
         int total = 0;
         for (const Meld& m : melds)
@@ -160,26 +164,29 @@ inline void drawMelds(dos::Video& v, const Game& g, const UiState& ui) {
 
         if (total > rows) {
             char header[40];
-            std::snprintf(header, sizeof header, "%s %d-%d/%d", kHeader[seat], start + 1,
+            std::snprintf(header, sizeof header, "%s %d-%d/%d",
+                          mine ? "SEUS JOGOS" : "MEUS JOGOS", start + 1,
                           std::min(total, start + rows), total);
-            puts(v, col[seat], ROW_RULE2 + 1, header, DIM);
+            puts(v, x, ROW_RULE2 + 1, header, DIM);
         } else {
-            puts(v, col[seat], ROW_RULE2 + 1, kHeader[seat], DIM);
+            puts(v, x, ROW_RULE2 + 1, mine ? "SEUS JOGOS" : "MEUS JOGOS", DIM);
         }
 
         int row = ROW_MELD;
         int shown = 0;
         for (size_t i = size_t(start); i < melds.size() && shown < rows; ++i) {
             if (melds[i].empty()) continue;
-            drawMeldLine(v, melds[i], col[seat], row, maxCol[seat]);
+            drawMeldLine(v, melds[i], x, row, maxCol[slot]);
             ++row;
             ++shown;
         }
-        if (total == 0) puts(v, col[seat], ROW_MELD, "nenhum jogo", DIM);
+        if (total == 0) puts(v, x, ROW_MELD, "nenhum jogo", DIM);
     }
     // Scores between the two headers so they never sit on top of a meld line.
     char buf[64];
-    std::snprintf(buf, sizeof buf, "%d  x  %d", g.player(0).total, g.player(1).total);
+    const int other = 1 - ui.viewSeat;
+    std::snprintf(buf, sizeof buf, "%d  x  %d", g.player(ui.viewSeat).total,
+                  g.player(other).total);
     puts(v, 30, ROW_RULE2 + 1, buf, DIM);
 }
 
@@ -188,9 +195,10 @@ inline void drawHand(dos::Video& v, const Game& g, const UiState& ui) {
     // AI is playing its hand is shown face-down under "Minha mao.".
     const bool scoring = g.phase() == buraco::Phase::HandOver ||
                          g.phase() == buraco::Phase::MatchOver;
-    const int seat = scoring ? 0 : g.current();
+    const int seat = scoring ? ui.viewSeat : g.current();
     const auto& p = g.player(seat);
-    puts(v, 1, ROW_LABEL, seat == 0 ? "Sua mao." : "Minha mao.", FIELD);
+    const bool mine = seat == ui.viewSeat;
+    puts(v, 1, ROW_LABEL, mine ? "Sua mao." : "Minha mao.", FIELD);
 
     char buf[64];
     int pts = 0;
@@ -201,14 +209,14 @@ inline void drawHand(dos::Video& v, const Game& g, const UiState& ui) {
     // Never reveal the opponent's cards: the AI hand is only ever drawn from
     // the back.  (PageUp used to toggle a peek, which made it too easy to see
     // the CPU's cards by accident.)
-    const bool faceUp = seat == 0;
+    const bool faceUp = mine;
 
     // A hand bought from the table can grow past what fits in 78 columns.
     // Show a window that always contains the cursor; moving left/right scrolls
     // it, so every card stays reachable.
     int first = 0;
     int last = int(p.hand.size()) - 1;
-    if (seat == 0 && !p.hand.empty()) {
+    if (mine && !p.hand.empty()) {
         const int cur = std::clamp(ui.cursor, 0, last);
         int used = buraco::cardWidth(p.hand[cur]);
         first = cur;
@@ -231,7 +239,7 @@ inline void drawHand(dos::Video& v, const Game& g, const UiState& ui) {
     if (!p.hand.empty()) visible.assign(p.hand.begin() + first, p.hand.begin() + last + 1);
     std::vector<bool> visibleSel;
     const std::vector<bool>* selPtr = nullptr;
-    if (seat == 0) {
+    if (mine) {
         visibleSel.assign(visible.size(), false);
         for (size_t i = 0; i < visible.size(); ++i) {
             const size_t src = size_t(first) + i;
@@ -242,7 +250,7 @@ inline void drawHand(dos::Video& v, const Game& g, const UiState& ui) {
 
     FanResult fan = drawFan(v, visible, 1, ROW_HAND, faceUp, 78, selPtr);
 
-    if (seat == 0 && !p.hand.empty()) {
+    if (mine && !p.hand.empty()) {
         const int idx = std::clamp(ui.cursor, 0, int(p.hand.size()) - 1) - first;
         if (idx >= 0 && idx < int(fan.columns.size()))
             put(v, fan.columns[idx] + 1, ROW_CURSOR, 0x1F, FIELD);  // ▼ above the cursor card
@@ -498,6 +506,19 @@ inline void drawNameEntry(dos::Video& v, const std::string& input,
 
 }  // namespace
 
+// Hot-seat curtain: the next player must press ENTER before the hand on the
+// table changes, so nobody sees the previous player's cards by accident.
+inline void drawSeatSwitch(dos::Video& v, const Game& g) {
+    std::vector<std::string> lines;
+    const std::string& raw = g.player(g.current()).name;
+    const std::string name = raw.empty() ? "JOGADOR" : raw;
+    lines.push_back("Passe o controle para " + name + ".");
+    lines.push_back("Nao mostre a mao para o outro jogador.");
+    lines.push_back("");
+    lines.push_back("...agora aperte ENTER");
+    drawTextBox(v, "BURACO - troca de jogador", lines);
+}
+
 void draw(dos::Video& v, const Game& g, const UiState& ui) {
     switch (ui.screen) {
         case UiState::Screen::Intro:
@@ -514,6 +535,10 @@ void draw(dos::Video& v, const Game& g, const UiState& ui) {
     }
 
     clear(v);
+    if (ui.handoff) {
+        drawSeatSwitch(v, g);
+        return;
+    }
     hrule(v, ROW_RULE1, 0xC4, FIELD);
     hrule(v, ROW_RULE2, 0xC4, FIELD);
     hrule(v, ROW_RULE3, 0xC4, FIELD);

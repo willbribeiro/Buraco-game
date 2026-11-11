@@ -174,3 +174,60 @@ TEST_CASE("the status screen reports the match numbers") {
     CHECK(hands);
     CHECK(melds);
 }
+
+TEST_CASE("viewSeat shows the hand of the seat that is to move") {
+    Game g;
+    g.newMatch("Ana", 99u, "Bia");
+    g.setController(0, Controller::Human);
+    g.setController(1, Controller::Human);
+
+    // Finish seat 0's turn so current() becomes seat 1.
+    REQUIRE(g.draw(false));
+    g.requestDiscard();
+    REQUIRE(g.discardCard(g.player(0).hand.front()));
+    CHECK_EQ(g.current(), 1);
+
+    dos::Video own;
+    ui::UiState ownState;
+    ownState.viewSeat = 1;
+    ownState.selected.assign(g.player(1).hand.size(), false);
+    ui::draw(own, g, ownState);
+
+    dos::Video other;
+    ui::UiState otherState;
+    otherState.viewSeat = 0;
+    otherState.selected.assign(g.player(0).hand.size(), false);
+    ui::draw(other, g, otherState);
+
+    CHECK(rowText(own, ui::ROW_LABEL).find("Sua mao.") != std::string::npos);
+    CHECK(rowText(other, ui::ROW_LABEL).find("Minha mao.") != std::string::npos);
+    // Seat 1 is revealed, seat 0 is not: the card interior is either the
+    // rank/suit or the 0xB1 back hatch, so those rows must differ.
+    CHECK(rowText(own, ui::ROW_HAND + 1) != rowText(other, ui::ROW_HAND + 1));
+}
+
+TEST_CASE("the handoff curtain hides the table until ENTER") {
+    Game g;
+    g.newMatch("Ana", 3u, "Bia");
+    ui::UiState state;
+    state.handoff = true;
+    state.viewSeat = 1;
+
+    dos::Video v;
+    ui::draw(v, g, state);
+
+    CHECK(startsWith(rowText(v, 0), "BURACO - troca de jogador"));
+    bool pass = false, enter = false;
+    for (int r = 0; r < ui::ROWS; ++r) {
+        const std::string line = rowText(v, r);
+        if (line.find("Passe o controle para Ana") != std::string::npos) pass = true;
+        if (line.find("aperte ENTER") != std::string::npos) enter = true;
+    }
+    CHECK(pass);
+    CHECK(enter);
+    // Only the box borders remain on the hand row: no cards leak through.
+    int nonspace = 0;
+    for (char ch : rowText(v, ui::ROW_HAND))
+        if (ch != ' ') ++nonspace;
+    CHECK_EQ(nonspace, 2);
+}

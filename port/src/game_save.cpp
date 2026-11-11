@@ -16,6 +16,7 @@ namespace buraco {
 //   BURACO-SAVE 1
 //   hand <n>          current <seat>     phase <0..4>    prompt <0..2>
 //   rng <u32>         wentout <seat> <byMeld 0|1>        timer <seconds>
+//   ctrl <c0> <c1>    optional; 0 human, 1 AI, 2 remote (absent = solo)
 //   name <seat> <text to end of line>
 //   player <seat> <tookMorto> <wentOut> <lastHandPoints> <total> <n> <ids...>
 //   melds <seat> <count>
@@ -45,6 +46,7 @@ bool Game::saveTo(const std::string& path) const {
     f << "timer " << timer_ << '\n';
     f << "drawn " << int(lastDrawn_.id) << '\n';
     f << "stats " << handsPlayed_ << ' ' << wins_[0] << ' ' << wins_[1] << '\n';
+    f << "ctrl " << int(controllers_[0]) << ' ' << int(controllers_[1]) << '\n';
 
     for (int seat = 0; seat < 2; ++seat) {
         const PlayerState& p = players_[seat];
@@ -134,6 +136,16 @@ bool Game::loadFrom(const std::string& path) {
             g.wins_[0] = w0;
             g.wins_[1] = w1;
             statsSeen = true;
+        } else if (tag == "ctrl") {
+            // Optional line: saves written before hot-seat have no controllers
+            // and must keep loading as the historical {Human, AI} match.
+            int c0 = 0, c1 = 0;
+            if (!(in >> c0 >> c1)) return false;
+            if (c0 < 0 || c0 > int(Controller::Remote) || c1 < 0 ||
+                c1 > int(Controller::Remote))
+                return false;
+            g.controllers_[0] = Controller(c0);
+            g.controllers_[1] = Controller(c1);
         } else if (tag == "name") {
             int seat = -1;
             in >> seat;
