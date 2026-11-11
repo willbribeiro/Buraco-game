@@ -206,6 +206,70 @@ TEST_CASE("viewSeat shows the hand of the seat that is to move") {
     CHECK(rowText(own, ui::ROW_HAND + 1) != rowText(other, ui::ROW_HAND + 1));
 }
 
+TEST_CASE("the mode screen offers solo and hot-seat") {
+    dos::Video v;
+    ui::UiState state;
+    state.screen = ui::UiState::Screen::ModeSelect;
+    state.modeChoice = 1;
+    Game g;
+    ui::draw(v, g, state);
+
+    CHECK(startsWith(rowText(v, 0), "BURACO - novo jogo"));
+    bool one = false, two = false, marker = false;
+    for (int r = 0; r < ui::ROWS; ++r) {
+        const std::string line = rowText(v, r);
+        if (line.find("1 jogador") != std::string::npos) one = true;
+        if (line.find("2 jogadores") != std::string::npos) two = true;
+        if (line.find("> 2 jogadores") != std::string::npos) marker = true;
+    }
+    CHECK(one);
+    CHECK(two);
+    CHECK(marker);
+}
+
+TEST_CASE("the name entry asks for each hot-seat player") {
+    dos::Video v;
+    ui::UiState state;
+    state.screen = ui::UiState::Screen::NameEntry;
+    state.twoPlayers = true;
+    state.nameSeat = 1;
+    state.inputName = "Bia";
+    Game g;
+    ui::draw(v, g, state);
+
+    bool prompt = false, echoed = false, fallback = false;
+    for (int r = 0; r < ui::ROWS; ++r) {
+        const std::string line = rowText(v, r);
+        if (line.find("Nome do JOGADOR 2?") != std::string::npos) prompt = true;
+        if (line.find("> Bia_") != std::string::npos) echoed = true;
+        if (line.find("usa JOGADOR 2") != std::string::npos) fallback = true;
+    }
+    CHECK(prompt);
+    CHECK(echoed);
+    CHECK(fallback);
+}
+
+TEST_CASE("hot-seat shows whose turn it is") {
+    Game g;
+    g.newMatch("Ana", 5u, "Bia");
+    g.setController(0, Controller::Human);
+    g.setController(1, Controller::Human);
+    g.setMessage("Comprar a mesa? (S/N)");
+
+    dos::Video v;
+    ui::UiState state;
+    ui::draw(v, g, state);
+    CHECK(rowText(v, ui::ROW_MSG).find("VEZ: Ana") != std::string::npos);
+    CHECK(rowText(v, ui::ROW_MSG).find("Comprar a mesa") != std::string::npos);
+
+    // The solo match keeps the historical message row.
+    Game solo;
+    solo.newMatch("Ana", 5u);
+    dos::Video sv;
+    ui::draw(sv, solo, state);
+    CHECK(rowText(sv, ui::ROW_MSG).find("VEZ:") == std::string::npos);
+}
+
 TEST_CASE("the handoff curtain hides the table until ENTER") {
     Game g;
     g.newMatch("Ana", 3u, "Bia");

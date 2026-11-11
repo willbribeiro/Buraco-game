@@ -40,7 +40,7 @@ constexpr int COL_MELD_R = 41;
 struct UiState {
     // Screens shown before the actual game starts.  Headless/batch modes keep
     // the default `Game` so the historical scripts still start with ENTER.
-    enum class Screen { Game, Intro, ContinuePrompt, NameEntry };
+    enum class Screen { Game, Intro, ContinuePrompt, ModeSelect, NameEntry };
     Screen screen = Screen::Game;
 
     int cursor = 0;
@@ -61,6 +61,10 @@ struct UiState {
     std::vector<buraco::Card> layCards;
 
     // Startup flow.
+    int modeChoice = 0;            // ModeSelect: 0 = one player, 1 = hot-seat
+    bool twoPlayers = false;       // new-game flow asking for both names
+    int nameSeat = 0;              // NameEntry: 0 = first, 1 = second player
+    std::string firstName;         // first name kept while typing the second
     std::string inputName;   // name being typed on the NameEntry screen
     std::string promptSave;  // save file offered on the ContinuePrompt screen
     std::string promptName;  // player name read from that save file

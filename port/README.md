@@ -29,7 +29,7 @@ extraída do próprio jogo).
 | Fonte VGA 8×16 autêntica extraída do DOSBox-X | ✅ |
 | F1 ajuda, F3 situação geral em tela cheia; mão do adversário sempre oculta | ✅ |
 | F2 salvar por jogador / F5 restaurar (`<nome>.sav` na pasta do jogo) | ✅ |
-| Tela inicial, continuar jogo gravado ou novo jogo com nome do jogador | ✅ |
+| Tela inicial, continuar jogo gravado ou novo jogo com 1/2 jogadores e nomes | ✅ |
 | Efeitos sonoros sintetizados (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro), com volume | ✅ |
 | Modo headless para regressão/diff (inclusive do fluxo inicial) | ✅ |
 
@@ -158,11 +158,14 @@ alteram o arquivo):
 
 ### Modo hot-seat
 
-`--hotseat` inicia uma partida com os dois assentos controlados pelo teclado
-(`JOGADOR 1` e `JOGADOR 2`). Ao fim de cada vez aparece uma tela de troca: o
-proximo jogador aperta ENTER antes de a mao ser revelada. O modo e gravado no
-save (linha `ctrl`), e saves antigos, sem essa linha, continuam abrindo como a
-partida solo de sempre (jogador x IA).
+No fluxo de novo jogo o porte pergunta quantos jogadores vao jogar: `1 jogador`
+(voce contra a IA) ou `2 jogadores` (hot-seat, na mesma maquina). No hot-seat a
+tela de nome aparece duas vezes, uma por assento; ENTER em branco usa
+`JOGADOR 1`/`JOGADOR 2`, e o save fica `<nome1> x <nome2>.sav`. `--hotseat`
+preseleciona 2 jogadores. Ao fim de cada vez aparece uma tela de troca: o
+proximo jogador aperta ENTER antes de a mao ser revelada, e o rodape mostra
+`VEZ: <nome>`. O modo e gravado no save (linha `ctrl`), e saves antigos, sem
+essa linha, continuam abrindo como a partida solo de sempre (jogador x IA).
 
 A tela de opções (`F9`) edita tudo isso em tempo real: escala (Auto ou 1×..8×),
 ajuste inteiro/esticado, tela cheia, VSync, iniciar maximizada, som, volume,
@@ -186,7 +189,8 @@ aberta, e as preferências são gravadas no `buraco.cfg` ao sair.
 | ENTER (fim de mão) | próxima mão |
 | ENTER (tela inicial) | segue para continuar um save encontrado ou pede o nome |
 | S / N (tela de save) | continua o jogo gravado (S) ou começa um novo (N) |
-| texto + ENTER (nome) | o nome digitado vira o arquivo de progresso |
+| ↑ / ↓, 1 / 2, ENTER (novo jogo) | escolhe 1 jogador (contra a IA) ou 2 jogadores (hot-seat) |
+| texto + ENTER (nome) | no solo vira o arquivo de progresso; no hot-seat, um nome por assento |
 | F1 | tela de ajuda (o mesmo texto da tela inicial) |
 | F3 | situação geral em tela cheia (partidas, vitórias, pontos, mãos, jogos, mesa e monte) |
 | F2 | grava a partida em `<nome do jogador>.sav` (ou `<nome>2.sav`, `<nome>3.sav`, ...) |
@@ -204,12 +208,15 @@ na pasta do jogo (ao lado de `buraco.exe`) o `.sav` mais recente que comece com
 
 * **se encontrar**, pergunta se o jogador quer continuar (`S`) ou criar um novo
   jogo (`N`);
-* **se não encontrar** (ou se o jogador escolher `N`), pede o nome do jogador.
+* **se não encontrar** (ou se o jogador escolher `N`), pergunta quantos jogadores
+  vão jogar — `1 jogador` (contra a IA) ou `2 jogadores` (hot-seat) — e pede o
+  nome de cada assento.
 
 O nome digitado é usado como nome do arquivo de progresso. Se já existir um
 arquivo com esse nome, o porte acrescenta numeração progressiva
-(`joao.sav`, `joao2.sav`, `joao3.sav`, ...). `F2` grava no arquivo escolhido no
-início da partida; `F5` restaura esse mesmo caminho.
+(`joao.sav`, `joao2.sav`, `joao3.sav`, ...); no hot-seat o save é
+`<nome1> x <nome2>.sav`. `F2` grava no arquivo escolhido no início da partida;
+`F5` restaura esse mesmo caminho.
 
 ## 4. Modos de execução (teste sem janela)
 
@@ -359,18 +366,19 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 3. **Save**: `F2` grava um arquivo texto (`BURACO-SAVE 1`) com mãos, jogos,
    morto, monte, mesa, placar, estatísticas da partida, fase, jogador da vez e
    o estado do RNG, para a partida continuar exatamente do ponto gravado. `F5`
-   restaura. O nome do arquivo é o nome do jogador (`<nome>.sav`), com
-   numeração progressiva quando necessário; o fluxo inicial escolhe entre
-   continuar o save mais recente da pasta ou criar um novo jogo.
+   restaura. O nome do arquivo é o nome do jogador (`<nome>.sav`) ou, no
+   hot-seat, `<nome1> x <nome2>.sav`, com numeração progressiva quando
+   necessário; o fluxo inicial escolhe entre continuar o save mais recente da
+   pasta ou criar um novo jogo.
 
 ## 8. Validação
 
-* `ctest --test-dir build` roda os 139 casos de teste (cartas, máquina de
-  turnos, save/load, nomes de arquivo, invariantes, tela, configuração de
-  vídeo e som, cálculo e estado da janela, tela de opções, síntese e eventos
-  sonoros). O caso de tela compara o hash das 25 linhas com a saída capturada
-  de `--auto 400 --seed 1234`, então a divisão do antigo `main.cpp` em módulos
-  não mudou um pixel.
+* `ctest --test-dir build` roda os 143 casos de teste (cartas, máquina de
+  turnos, save/load, nomes de arquivo, controladores e hot-seat, invariantes,
+  tela, configuração de vídeo e som, cálculo e estado da janela, tela de
+  opções, síntese e eventos sonoros). O caso de tela compara o hash das 25
+  linhas com a saída capturada de `--auto 400 --seed 1234`, então a divisão do
+  antigo `main.cpp` em módulos não mudou um pixel.
 * `shots/33_deal720.png` (original) vs. `shots/41_port_deal.png` (porte):
   mesma distribuição de linhas, mesma fan vertical de 2 colunas por carta.
 * `--check 20000` fecha partidas inteiras nos seeds 99, 777, 12345, 4242, 7,
@@ -391,5 +399,9 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
   do nome, o `F2` (cria `<nome>.sav` na pasta indicada por `--savedir`) e a
   tela cheia do `F3`; repetir o nome gera `<nome>2.sav` e o fluxo de continuar
   restaura o estado gravado.
+* `--hotseat --flow --script` com dois nomes cria `ana x bia.sav`, alterna o
+  rodapé `VEZ: ana` / `VEZ: bia` a cada turno e mantém o mesmo fluxo headless;
+  `--check`, `--auto`, `--savetest` e o fluxo solo continuam byte a byte
+  idênticos ao `HEAD` anterior (mesmos hashes SHA-256).
 * Capturas do porte: `shots/50_port_melds.png`, `shots/52_port_melds.png`,
   `shots/60_port_score.png` (tela de contagem detalhada).

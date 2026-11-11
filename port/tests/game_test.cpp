@@ -483,6 +483,16 @@ TEST_CASE("the prompt enum is persisted") {
     CHECK_EQ(int(g.prompt()), int(Prompt::NewHand));
 }
 
+TEST_CASE("newMatch stores both seat names") {
+    Game g;
+    g.newMatch("Ana", 3u, "Bia");
+    CHECK_EQ(g.player(0).name, std::string("Ana"));
+    CHECK_EQ(g.player(1).name, std::string("Bia"));
+    // Naming the opponent does not change the historical solo controllers.
+    CHECK(g.isHuman(0));
+    CHECK(g.isAi(1));
+}
+
 TEST_CASE("controllers start as human vs AI and can be changed") {
     Game g;
     CHECK(g.isHuman(0));

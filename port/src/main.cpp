@@ -233,7 +233,7 @@ int main(int argc, char** argv) {
     bool resetConfig = false;
     bool displayInfo = false;
     bool audioTest = false;
-    bool hotseat = false;
+    bool twoPlayers = false;
     std::optional<int> cliScale;
     std::optional<bool> cliFullscreen;
     std::optional<bool> cliIntegerScale;
@@ -297,7 +297,7 @@ int main(int argc, char** argv) {
         } else if (a == "--display-info") {
             displayInfo = true;
         } else if (a == "--hotseat") {
-            hotseat = true;
+            twoPlayers = true;
         } else if (a == "--audio-test") {
             audioTest = true;
         } else if (a == "--config" || a == "--scale" || a == "--vsync" ||
@@ -368,18 +368,18 @@ int main(int argc, char** argv) {
     buraco::Game game;
     ui::UiState ui;
 
-    // Starts a fresh match.  Hot-seat uses two local humans with fixed names
-    // for now (the mode/name screen comes in the next phase); solo keeps the
-    // historical {Human, AI} pair and the caller-provided name.
-    auto startMatch = [&](const std::string& name) {
-        // A loaded hot-seat save keeps its mode when a new match is started.
-        if (hotseat || game.isHotseat()) {
-            game.newMatch("JOGADOR 1", seed ? seed : (batch ? 1234u : makeSeed()),
-                          "JOGADOR 2");
+    // Starts a fresh match.  Hot-seat uses two local humans and names supplied
+    // by the new-game flow; solo keeps the historical {Human, AI} pair.
+    auto startMatch = [&](const std::string& name1, const std::string& name2) {
+        const uint32_t matchSeed = seed ? seed : (batch ? 1234u : makeSeed());
+        if (twoPlayers) {
+            const std::string p1 = name1.empty() ? "JOGADOR 1" : name1;
+            const std::string p2 = name2.empty() ? "JOGADOR 2" : name2;
+            game.newMatch(p1, matchSeed, p2);
             game.setController(0, buraco::Controller::Human);
             game.setController(1, buraco::Controller::Human);
         } else {
-            game.newMatch(name, seed ? seed : (batch ? 1234u : makeSeed()));
+            game.newMatch(name1.empty() ? "JOGADOR" : name1, matchSeed);
             game.setController(0, buraco::Controller::Human);
             game.setController(1, buraco::Controller::Ai);
         }
@@ -390,7 +390,9 @@ int main(int argc, char** argv) {
     if (interactiveStart) {
         ui.screen = ui::UiState::Screen::Intro;
     } else {
-        startMatch("JOGADOR");
+        // Batch hot-seat keeps the phase-1 default seat names; solo keeps the
+        // historical "JOGADOR" name used by the regression dumps.
+        startMatch(twoPlayers ? "" : "JOGADOR", "");
     }
     bool started = false;
     bool running = true;
@@ -419,10 +421,15 @@ int main(int argc, char** argv) {
         if (game.current() != ui.viewSeat) ui.handoff = true;
     };
 
-    // After loading a save the visible seat follows the save mode: a hot-seat
-    // match shows whoever is to move, while a solo save always shows seat 0.
+    // After loading a save the session follows the save mode: a hot-seat match
+    // shows whoever is to move, while a solo save always shows seat 0.
     auto syncViewSeat = [&]() {
-        ui.viewSeat = game.isHotseat() ? game.current() : 0;
+        twoPlayers = game.isHotseat();
+        ui.modeChoice = twoPlayers ? 1 : 0;
+        ui.twoPlayers = twoPlayers;
+        ui.nameSeat = 0;
+        ui.firstName.clear();
+        ui.viewSeat = twoPlayers ? game.current() : 0;
         ui.handoff = false;
     };
 
@@ -441,7 +448,15 @@ int main(int argc, char** argv) {
                 } else {
                     ui.inputName.clear();
                     ui.inputError.clear();
-                    ui.screen = Screen::NameEntry;
+                    ui.nameSeat = 0;
+                    ui.firstName.clear();
+                    ui.twoPlayers = twoPlayers;
+                    if (flowMode) {
+                        ui.screen = Screen::NameEntry;
+                    } else {
+                        ui.modeChoice = twoPlayers ? 1 : 0;
+                        ui.screen = Screen::ModeSelect;
+                    }
                 }
             } else if (sym == SDLK_ESCAPE) {
                 running = false;
@@ -464,14 +479,46 @@ int main(int argc, char** argv) {
                 } else {
                     ui.inputName.clear();
                     ui.inputError = "Nao consegui ler o jogo gravado. Digite um nome.";
+                    ui.nameSeat = 0;
+                    ui.firstName.clear();
+                    ui.twoPlayers = twoPlayers;
                     ui.screen = Screen::NameEntry;
                 }
             } else if (sym == SDLK_n) {
                 ui.inputName.clear();
                 ui.inputError.clear();
-                ui.screen = Screen::NameEntry;
+                ui.nameSeat = 0;
+                ui.firstName.clear();
+                ui.twoPlayers = twoPlayers;
+                if (flowMode) {
+                    ui.screen = Screen::NameEntry;
+                } else {
+                    ui.modeChoice = twoPlayers ? 1 : 0;
+                    ui.screen = Screen::ModeSelect;
+                }
             } else if (sym == SDLK_ESCAPE) {
                 running = false;
+            }
+            return;
+        }
+
+        if (ui.screen == Screen::ModeSelect) {
+            if (sym == SDLK_UP || sym == SDLK_DOWN) {
+                ui.modeChoice = ui.modeChoice ? 0 : 1;
+            } else if (sym == SDLK_1) {
+                ui.modeChoice = 0;
+            } else if (sym == SDLK_2) {
+                ui.modeChoice = 1;
+            } else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
+                twoPlayers = ui.modeChoice == 1;
+                ui.twoPlayers = twoPlayers;
+                ui.nameSeat = 0;
+                ui.firstName.clear();
+                ui.inputName.clear();
+                ui.inputError.clear();
+                ui.screen = Screen::NameEntry;
+            } else if (sym == SDLK_ESCAPE) {
+                ui.screen = Screen::Intro;
             }
             return;
         }
@@ -480,14 +527,28 @@ int main(int argc, char** argv) {
             if (sym == SDLK_BACKSPACE) {
                 if (!ui.inputName.empty()) ui.inputName.pop_back();
             } else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
-                if (ui.inputName.empty() && !hotseat) {
-                    ui.inputError = "Digite um nome antes de continuar.";
+                std::string name = ui.inputName;
+                if (name.empty()) {
+                    if (!twoPlayers) {
+                        ui.inputError = "Digite um nome antes de continuar.";
+                        return;
+                    }
+                    // Empty input in hot-seat keeps the default seat name.
+                    name = ui.nameSeat == 0 ? "JOGADOR 1" : "JOGADOR 2";
+                }
+                if (twoPlayers && ui.nameSeat == 0) {
+                    ui.firstName = name;
+                    ui.nameSeat = 1;
+                    ui.inputName.clear();
+                    ui.inputError.clear();
                     return;
                 }
-                const std::string name = ui.inputName;
+                const std::string name1 = twoPlayers ? ui.firstName : name;
+                const std::string name2 = twoPlayers ? name : std::string();
                 if (!savePathSet)
-                    save::path() = save::uniquePathForName(hotseat ? "hotseat" : name);
-                startMatch(name);
+                    save::path() = save::uniquePathForName(
+                        twoPlayers ? name1 + " x " + name2 : name1);
+                startMatch(name1, name2);
                 started = true;
                 ui.help = false;
                 ui.status = false;
@@ -495,9 +556,17 @@ int main(int argc, char** argv) {
                 ui.inputError.clear();
                 resetSelection();
             } else if (sym == SDLK_ESCAPE) {
-                ui.inputName.clear();
-                ui.inputError.clear();
-                ui.screen = Screen::Intro;
+                if (ui.nameSeat == 1) {
+                    // Back to the first name without losing what was typed.
+                    ui.nameSeat = 0;
+                    ui.inputName = ui.firstName;
+                    ui.firstName.clear();
+                    ui.inputError.clear();
+                } else {
+                    ui.inputName.clear();
+                    ui.inputError.clear();
+                    ui.screen = flowMode ? Screen::Intro : Screen::ModeSelect;
+                }
             } else if (batch && sym >= 32 && sym < 127) {
                 if (ui.inputName.size() < 40) ui.inputName += char(sym);
             }
@@ -593,9 +662,7 @@ int main(int argc, char** argv) {
         }
         if (game.phase() == Phase::MatchOver) {
             if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
-                const std::string name =
-                    game.player(0).name.empty() ? "JOGADOR" : game.player(0).name;
-                startMatch(name);
+                startMatch(game.player(0).name, game.player(1).name);
                 resetSelection();
             }
             return;

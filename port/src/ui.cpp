@@ -487,16 +487,40 @@ inline void drawContinuePrompt(dos::Video& v, const std::string& saveFile,
     drawTextBox(v, "BURACO - jogo gravado", lines);
 }
 
-// Asked for a new game: the typed name becomes the save file name.
-inline void drawNameEntry(dos::Video& v, const std::string& input,
-                          const std::string& error) {
+// New game: one local player against the AI or two local players (hot-seat).
+inline void drawModeSelect(dos::Video& v, int choice) {
     std::vector<std::string> lines;
-    lines.push_back("Qual o seu nome?");
+    lines.push_back("Quantos jogadores?");
+    lines.push_back("");
+    lines.push_back(std::string(choice == 0 ? "> " : "  ") +
+                    "1 jogador  (voce contra a IA)");
+    lines.push_back(std::string(choice == 1 ? "> " : "  ") +
+                    "2 jogadores  (hot-seat, mesma maquina)");
+    lines.push_back("");
+    lines.push_back("Setas ou 1/2 escolhem.  ENTER confirma.  ESC volta.");
+    drawTextBox(v, "BURACO - novo jogo", lines);
+}
+
+// Asked for a new game: the typed name becomes the save file name.  In
+// hot-seat the same screen is used twice, once per seat.
+inline void drawNameEntry(dos::Video& v, const std::string& input,
+                          const std::string& error, int seat, bool twoPlayers) {
+    std::vector<std::string> lines;
+    if (twoPlayers)
+        lines.push_back(seat == 0 ? "Nome do JOGADOR 1?" : "Nome do JOGADOR 2?");
+    else
+        lines.push_back("Qual o seu nome?");
     lines.push_back("");
     lines.push_back("> " + input + "_");
     lines.push_back("");
-    lines.push_back("O nome digitado sera o nome do arquivo de progresso.");
-    lines.push_back("ENTER confirma.  ESC volta a tela inicial.");
+    if (twoPlayers) {
+        lines.push_back(seat == 0 ? "ENTER em branco usa JOGADOR 1."
+                                  : "ENTER em branco usa JOGADOR 2.");
+        lines.push_back("O save usa os dois nomes.  ESC volta a tela inicial.");
+    } else {
+        lines.push_back("O nome digitado sera o nome do arquivo de progresso.");
+        lines.push_back("ENTER confirma.  ESC volta a tela inicial.");
+    }
     if (!error.empty()) {
         lines.push_back("");
         lines.push_back(error);
@@ -527,8 +551,11 @@ void draw(dos::Video& v, const Game& g, const UiState& ui) {
         case UiState::Screen::ContinuePrompt:
             drawContinuePrompt(v, ui.promptSave, ui.promptName);
             return;
+        case UiState::Screen::ModeSelect:
+            drawModeSelect(v, ui.modeChoice);
+            return;
         case UiState::Screen::NameEntry:
-            drawNameEntry(v, ui.inputName, ui.inputError);
+            drawNameEntry(v, ui.inputName, ui.inputError, ui.nameSeat, ui.twoPlayers);
             return;
         case UiState::Screen::Game:
             break;
@@ -547,7 +574,25 @@ void draw(dos::Video& v, const Game& g, const UiState& ui) {
     for (int r = ROW_RULE2 + 1; r < ROW_RULE3; ++r) put(v, COL_SPLIT, r, 0xBA, FIELD);
     put(v, COL_SPLIT, ROW_RULE3, 0xD0, FIELD);
 
-    puts(v, 0, ROW_MSG, g.message(), FIELD);
+    if (g.isHotseat() && g.phase() != buraco::Phase::HandOver &&
+        g.phase() != buraco::Phase::MatchOver) {
+        // Hot-seat has two local players, so name the one whose turn it is.
+        // Clip the message so the HUD never sits on top of it.
+        const std::string& raw = g.player(g.current()).name;
+        const std::string hud =
+            "VEZ: " + (raw.empty() ? std::string("JOGADOR") : raw);
+        std::string msg = g.message();
+        if (hud.size() < size_t(COLS)) {
+            const size_t room = size_t(COLS) - hud.size() - 1;
+            if (msg.size() > room) msg.resize(room);
+            puts(v, 0, ROW_MSG, msg, FIELD);
+            puts(v, COLS - int(hud.size()), ROW_MSG, hud, WILD);
+        } else {
+            puts(v, 0, ROW_MSG, msg, FIELD);
+        }
+    } else {
+        puts(v, 0, ROW_MSG, g.message(), FIELD);
+    }
 
     drawPiles(v, g);
     drawMelds(v, g, ui);
