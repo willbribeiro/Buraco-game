@@ -1,8 +1,8 @@
 # Testes do porte
 
 Testes unitários do porte C++/SDL2. O harness é próprio (`test_framework.*`)
-e não depende de Catch2 nem de nenhum outro pacote: só da biblioteca padrão e
-do SDL2 já usado pelo jogo.
+e não depende de Catch2 nem de nenhum outro pacote: só da biblioteca padrão,
+do SDL2 já usado pelo jogo e das APIs de socket do sistema.
 
 ## Como compilar e rodar
 
@@ -32,6 +32,7 @@ O script `run_tests.ps1` faz o build e a execução em um passo.
 | `test_helpers.h` | criação de saves em memória, `snapshot()` do estado |
 | `cards_test.cpp` | ids/naipes, pontos, curingas, glifos, construção de jogos |
 | `game_test.cpp` | distribuição, compra, jogos, morto, batida, pontuação, IA, save/load |
+| `net_test.cpp` | TCP loopback, framing, timeouts, `HELLO`/ações, `Remote` e lockstep |
 | `save_test.cpp` | `sanitizeName`, nomes reservados do Windows, numeração de saves |
 | `config_test.cpp` | arquivo `buraco.cfg`, defaults de vídeo/som, clamps, valores inválidos e round-trip |
 | `window_scale_test.cpp` | tamanho da janela por escala, encaixe na área útil e escala inteira |
@@ -74,6 +75,9 @@ O script `run_tests.ps1` faz o build e a execução em um passo.
   e volume 0 produzem silêncio exato e o `Game` emite os eventos certos
   (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro)
   sem afetar save, tela ou RNG.
+* **Rede**: sockets TCP reais em loopback com framing de 4 bytes, timeout,
+  frame acima do limite, fechamento gracioso, `HELLO` e ações válidas/inválidas,
+  `Controller::Remote` inerte e 400 ações em lockstep entre dois `Game`.
 
 ## Regressão de comportamento
 

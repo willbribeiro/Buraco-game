@@ -145,6 +145,6 @@ renderização determinística da tela. Detalhes em
 
 - [x] Som
 - [x] Modo hot-seat local (dois jogadores, troca de vez)
-- [ ] Modo multi-jogador em rede
+- [ ] Modo multi-jogador em rede (fundação TCP/protocolo pronta)
 - [ ] Tradução da interface
 - [x] Opções de janela/redimensionamento

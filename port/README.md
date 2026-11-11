@@ -32,6 +32,7 @@ extraída do próprio jogo).
 | Tela inicial, continuar jogo gravado ou novo jogo com 1/2 jogadores e nomes | ✅ |
 | Efeitos sonoros sintetizados (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro), com volume | ✅ |
 | Modo headless para regressão/diff (inclusive do fluxo inicial) | ✅ |
+| Fundação de rede: TCP, protocolo de ações e lockstep determinístico | ✅ |
 
 ## 2. Build
 
@@ -174,6 +175,25 @@ escolhem a linha, esquerda/direita alteram o valor (volume em passos de 10%),
 `ENTER` aplica e `F9`/`ESC` fecha. A partida fica pausada enquanto a tela está
 aberta, e as preferências são gravadas no `buraco.cfg` ao sair.
 
+### Fundação de rede (fase 3)
+
+A base do modo online já está no núcleo, ainda sem tela nem argumentos novos:
+
+* `net.*` implementa TCP sobre Winsock2/BSD sockets (nada além do sistema
+  operacional), com frames de 4 bytes de tamanho + payload (limite de 1 MiB),
+  timeouts de envio/recepção e detecção de conexão encerrada.
+* `net_protocol.*` define `BURACO-NET 1 HELLO <nome>` e
+  `BURACO-NET 1 ACT <ação>` (`draw stock|table`, `lay`, `discard`,
+  `request-discard`, `prompt yes|no`, `continue`).
+* O modelo é determinístico e em lockstep: os dois lados começam a mesma
+  partida com a mesma semente e aplicam a mesma sequência de ações. Cabe ao
+  host validar a ação do assento remoto antes de aplicá-la e retransmití-la; um
+  fingerprint FNV-1a do estado detecta dessincronização.
+* `Controller::Remote` nunca age sozinho (`update()` só executa a IA), e ações
+  ilegais são recusadas sem alterar o estado.
+* Ainda não há tela de host/entrar, descoberta de sala, reconexão nem
+  criptografia; isso fica para a fase 4.
+
 ## 3. Controles
 
 | Tecla | Ação |
@@ -276,6 +296,8 @@ src/video.*         framebuffer de texto (80x25)
 src/renderer.*      fonte VGA + apresentação SDL2
 src/save.*          descoberta e nomes dos arquivos de progresso
 src/report.*        dumps de estado e invariantes das 108 cartas
+src/net.*           transporte TCP, framing e timeouts
+src/net_protocol.*  hello, ações de rede e fingerprint do estado
 tests/              testes unitários (harness próprio, sem Catch2)
 assets/             font8x16.bin (256 glifos × 16 bytes, VGA 8×16)
 ```
@@ -373,12 +395,12 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 ## 8. Validação
 
-* `ctest --test-dir build` roda os 143 casos de teste (cartas, máquina de
-  turnos, save/load, nomes de arquivo, controladores e hot-seat, invariantes,
-  tela, configuração de vídeo e som, cálculo e estado da janela, tela de
-  opções, síntese e eventos sonoros). O caso de tela compara o hash das 25
-  linhas com a saída capturada de `--auto 400 --seed 1234`, então a divisão do
-  antigo `main.cpp` em módulos não mudou um pixel.
+* `ctest --test-dir build` roda os 153 casos de teste (cartas, máquina de
+  turnos, save/load, nomes de arquivo, controladores e hot-seat, rede TCP e
+  protocolo, invariantes, tela, configuração de vídeo e som, cálculo e estado
+  da janela, tela de opções, síntese e eventos sonoros). O caso de tela compara
+  o hash das 25 linhas com a saída capturada de `--auto 400 --seed 1234`, então
+  a divisão do antigo `main.cpp` em módulos não mudou um pixel.
 * `shots/33_deal720.png` (original) vs. `shots/41_port_deal.png` (porte):
   mesma distribuição de linhas, mesma fan vertical de 2 colunas por carta.
 * `--check 20000` fecha partidas inteiras nos seeds 99, 777, 12345, 4242, 7,
@@ -403,5 +425,8 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
   rodapé `VEZ: ana` / `VEZ: bia` a cada turno e mantém o mesmo fluxo headless;
   `--check`, `--auto`, `--savetest` e o fluxo solo continuam byte a byte
   idênticos ao `HEAD` anterior (mesmos hashes SHA-256).
+* Os testes de rede abrem sockets loopback reais: conferem framing, timeout,
+  frame acima do limite, conexão encerrada, codecs de `HELLO`/ação, recusa de
+  ações ilegais sem mudar o estado e 400 ações em lockstep entre dois `Game`.
 * Capturas do porte: `shots/50_port_melds.png`, `shots/52_port_melds.png`,
   `shots/60_port_score.png` (tela de contagem detalhada).

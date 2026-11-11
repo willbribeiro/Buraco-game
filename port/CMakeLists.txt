@@ -18,6 +18,8 @@ add_library(buraco_core STATIC
     src/config.cpp
     src/game.cpp
     src/game_save.cpp
+    src/net.cpp
+    src/net_protocol.cpp
     src/options.cpp
     src/sound.cpp
     src/ui.cpp
@@ -29,6 +31,10 @@ add_library(buraco_core STATIC
 
 target_include_directories(buraco_core PUBLIC src)
 target_link_libraries(buraco_core PUBLIC SDL2::SDL2)
+if(WIN32)
+    # Winsock is part of the operating system, not an extra dependency.
+    target_link_libraries(buraco_core PUBLIC ws2_32)
+endif()
 
 add_executable(buraco
     src/audio.cpp

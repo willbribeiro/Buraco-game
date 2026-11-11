@@ -5,6 +5,7 @@ add_executable(buraco_tests
     cards_test.cpp
     config_test.cpp
     game_test.cpp
+    net_test.cpp
     options_test.cpp
     save_test.cpp
     report_test.cpp
@@ -14,6 +15,8 @@ add_executable(buraco_tests
     window_state_test.cpp)
 
 target_link_libraries(buraco_tests PRIVATE buraco_core)
+find_package(Threads REQUIRED)
+target_link_libraries(buraco_tests PRIVATE Threads::Threads)
 
 if (MSVC)
     target_compile_options(buraco_tests PRIVATE /W4 /permissive-)
