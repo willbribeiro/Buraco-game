@@ -22,7 +22,8 @@ Os testes são compilados por padrão. Para desligá-los:
 cmake -S port -B port\build -DBURACO_BUILD_TESTS=OFF ...
 ```
 
-O script `run_tests.ps1` faz o build e a execução em um passo.
+O script `run_tests.ps1` faz o build e a execução em um passo. A suíte tem 168
+casos; `ctest` roda todos e falha se algum `CHECK` falhar.
 
 ## Arquivos
 
@@ -32,7 +33,8 @@ O script `run_tests.ps1` faz o build e a execução em um passo.
 | `test_helpers.h` | criação de saves em memória, `snapshot()` do estado |
 | `cards_test.cpp` | ids/naipes, pontos, curingas, glifos, construção de jogos |
 | `game_test.cpp` | distribuição, compra, jogos, morto, batida, pontuação, IA, save/load |
-| `net_test.cpp` | TCP loopback, framing, timeouts, `HELLO`/ações, `Remote` e lockstep |
+| `net_test.cpp` | TCP loopback, framing, timeouts, codecs `HELLO`/`SEAT`/`START`/`ACT`/`FP`/`ERR` e `FrameReader` |
+| `net_session_test.cpp` | handshake host/cliente, assentos, relay, recusas, timeout, queda, troca de cliente e partidas em lockstep |
 | `save_test.cpp` | `sanitizeName`, nomes reservados do Windows, numeração de saves |
 | `config_test.cpp` | arquivo `buraco.cfg`, defaults de vídeo/som, clamps, valores inválidos e round-trip |
 | `window_scale_test.cpp` | tamanho da janela por escala, encaixe na área útil e escala inteira |
@@ -40,7 +42,7 @@ O script `run_tests.ps1` faz o build e a execução em um passo.
 | `options_test.cpp` | navegação da tela F9, escala, toggles, som/volume, reset e desenho |
 | `sound_test.cpp` | cues, síntese, envelope, silêncio e eventos emitidos pelo `Game` |
 | `report_test.cpp` | `stateLine`/`strictLine` e `checkInvariants` (108 cartas) |
-| `ui_test.cpp` | geometria da tela, telas de ajuda/nome/contagem e hash dourado |
+| `ui_test.cpp` | geometria da tela, telas de ajuda/nome/contagem/online e hash dourado |
 
 ## O que é coberto
 
@@ -58,10 +60,11 @@ O script `run_tests.ps1` faz o build e a execução em um passo.
   60 caracteres e numeração `nome2.sav`, `nome3.sav` sem sobrescrever.
 * **Invariantes**: duplicação, id inválido, buraco em jogo, jogo vazio e
   contagem total diferente de 108.
-* **Tela**: layout 80×25, molduras, mão/mesa/jogos, telas de ajuda, nome e
-  contagem. O caso *hash dourado* reproduz `--auto 400 --seed 1234` e compara
-  o hash FNV-1a das 25 linhas com o valor capturado antes da divisão de
-  `main.cpp` em módulos.
+* **Tela**: layout 80×25, molduras, mão/mesa/jogos, telas de ajuda, nome,
+  contagem e online (menu host/entrar, porta/endereço/status e HUD `VEZ:` sem
+  revelar a mão remota). O caso *hash dourado* reproduz `--auto 400 --seed
+  1234` e compara o hash FNV-1a das 25 linhas com o valor capturado antes da
+  divisão de `main.cpp` em módulos.
 * **Janela**: posição salva fora dos monitores volta a centralizar, resize do
   usuário vira tamanho explícito (`scale=0`), eventos do próprio jogo
   (tamanho/posição aplicados) são ignorados e maximizada/restaurada é
@@ -76,8 +79,11 @@ O script `run_tests.ps1` faz o build e a execução em um passo.
   (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro)
   sem afetar save, tela ou RNG.
 * **Rede**: sockets TCP reais em loopback com framing de 4 bytes, timeout,
-  frame acima do limite, fechamento gracioso, `HELLO` e ações válidas/inválidas,
-  `Controller::Remote` inerte e 400 ações em lockstep entre dois `Game`.
+  frame acima do limite, fechamento gracioso, `HELLO`, `SEAT`, `START`, `FP` e
+  ações válidas/inválidas; `FrameReader` com frames partidos e coalescidos;
+  `Controller::Remote` inerte; sessão host/cliente com handshake, relay,
+  recusa, timeout, queda e troca de cliente; e uma partida real de duas
+  instâncias de `Game` em lockstep pela sessão TCP, conferindo os fingerprints.
 
 ## Regressão de comportamento
 

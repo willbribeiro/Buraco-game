@@ -1,4 +1,5 @@
 // Transport, protocol and lockstep tests for the network foundation.
+#include <chrono>
 #include <thread>
 
 #include "net.h"
@@ -195,6 +196,134 @@ TEST_CASE("action messages round-trip") {
     action.kind = ActionKind::Continue;
     parsed = roundTrip(action);
     CHECK(parsed.kind == ActionKind::Continue);
+}
+
+TEST_CASE("seat, start, fingerprint and error messages round-trip") {
+    std::string err;
+
+    int seat = -1;
+    REQUIRE(parseSeat(makeSeat(0), seat, &err));
+    CHECK_EQ(seat, 0);
+    REQUIRE(parseSeat(makeSeat(1), seat, &err));
+    CHECK_EQ(seat, 1);
+    CHECK(!parseSeat(makeSeat(2), seat, &err));
+    CHECK(!parseSeat("BURACO-NET 1 SEAT -1", seat, &err));
+    CHECK(!parseSeat("BURACO-NET 1 SEAT 1 extra", seat, &err));
+    CHECK(!parseSeat("BURACO-NET 1 HELLO Ana", seat, &err));
+
+    std::uint32_t seed = 0;
+    REQUIRE(parseStart(makeStart(12345u), seed, &err));
+    CHECK_EQ(seed, 12345u);
+    REQUIRE(parseStart(makeStart(4294967295u), seed, &err));
+    CHECK_EQ(seed, 4294967295u);
+    CHECK(!parseStart("BURACO-NET 1 START -1", seed, &err));
+    CHECK(!parseStart("BURACO-NET 1 START 4294967296", seed, &err));
+    CHECK(!parseStart("BURACO-NET 1 START abc", seed, &err));
+    CHECK(!parseStart("BURACO-NET 1 START 12 34", seed, &err));
+
+    std::string text;
+    REQUIRE(parseFingerprint(makeFingerprint("0123456789abcdef"), text, &err));
+    CHECK_EQ(text, std::string("0123456789abcdef"));
+    REQUIRE(parseFingerprint(makeFingerprint("0123456789ABCDEF"), text, &err));
+    CHECK_EQ(text, std::string("0123456789abcdef"));
+    CHECK(!parseFingerprint(makeFingerprint("0123456789abcde"), text, &err));
+    CHECK(!parseFingerprint(makeFingerprint("0123456789abcdeg"), text, &err));
+    CHECK(!parseFingerprint(makeFingerprint("0123456789abcdef0"), text, &err));
+
+    REQUIRE(parseError(makeError("jogada recusada"), text, &err));
+    CHECK_EQ(text, std::string("jogada recusada"));
+    const std::string withNewlines = std::string("linha 1\n") + "linha 2\r";
+    REQUIRE(parseError(makeError(withNewlines), text, &err));
+    CHECK_EQ(text, std::string("linha 1linha 2"));
+    CHECK(!parseError("BURACO-NET 1 ACT draw stock", text, &err));
+
+    CHECK_EQ(tagOf(makeHello("Ana")), std::string("HELLO"));
+    CHECK_EQ(tagOf(makeAction(Action{})), std::string("ACT"));
+    CHECK_EQ(tagOf(makeSeat(1)), std::string("SEAT"));
+    CHECK_EQ(tagOf(makeStart(1)), std::string("START"));
+    CHECK_EQ(tagOf(makeFingerprint("0123456789abcdef")), std::string("FP"));
+    CHECK_EQ(tagOf(makeError("x")), std::string("ERR"));
+    CHECK_EQ(tagOf(""), std::string());
+    CHECK_EQ(tagOf("BURACO-NET 2 HELLO Ana"), std::string());
+    CHECK_EQ(tagOf("BURACO-NET 1"), std::string());
+}
+
+namespace {
+
+std::string framed(const std::string& payload) {
+    const std::uint32_t size = std::uint32_t(payload.size());
+    std::string out;
+    out += char((size >> 24) & 0xFF);
+    out += char((size >> 16) & 0xFF);
+    out += char((size >> 8) & 0xFF);
+    out += char(size & 0xFF);
+    out += payload;
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("frame reader reassembles split and coalesced messages") {
+    std::string err;
+    Socket server;
+    REQUIRE(server.listen(0, &err));
+    const std::uint16_t port = server.localPort(&err);
+    REQUIRE(port != 0);
+
+    Socket client;
+    REQUIRE(client.connect("127.0.0.1", port, 3000, &err));
+    auto accepted = server.accept(3000, &err);
+    REQUIRE(accepted.has_value());
+    Socket peer = std::move(*accepted);
+    REQUIRE(peer.setNonBlocking(true));
+
+    const std::string first = framed("hello world");
+    const std::string second = framed("second");
+    // Split the first frame after its header plus one payload byte.
+    REQUIRE(client.sendAll(first.data(), 5, &err) == IoStatus::Ok);
+
+    FrameReader reader;
+    std::vector<std::string> messages;
+    const IoStatus partial = reader.read(peer, messages, &err);
+    CHECK(partial == IoStatus::Ok || partial == IoStatus::Timeout);
+    CHECK(messages.empty());
+
+    const std::string rest = first.substr(5) + second;
+    REQUIRE(client.sendAll(rest.data(), rest.size(), &err) == IoStatus::Ok);
+    std::vector<std::string> got;
+    for (int attempt = 0; attempt < 100 && got.size() < 2; ++attempt) {
+        std::vector<std::string> batch;
+        reader.read(peer, batch, &err);
+        got.insert(got.end(), batch.begin(), batch.end());
+        if (got.size() < 2)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE(got.size() == 2);
+    CHECK_EQ(got[0], std::string("hello world"));
+    CHECK_EQ(got[1], std::string("second"));
+}
+
+TEST_CASE("frame reader rejects an oversized header") {
+    std::string err;
+    Socket server;
+    REQUIRE(server.listen(0, &err));
+    const std::uint16_t port = server.localPort(&err);
+    REQUIRE(port != 0);
+
+    Socket client;
+    REQUIRE(client.connect("127.0.0.1", port, 3000, &err));
+    auto accepted = server.accept(3000, &err);
+    REQUIRE(accepted.has_value());
+    Socket peer = std::move(*accepted);
+    REQUIRE(peer.setNonBlocking(true));
+
+    const unsigned char header[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+    REQUIRE(client.sendAll(header, sizeof header, &err) == IoStatus::Ok);
+    FrameReader reader;
+    std::vector<std::string> messages;
+    CHECK(reader.read(peer, messages, &err) == IoStatus::Error);
+    CHECK(err.find("frame too large") != std::string::npos);
+    CHECK(!peer.valid());
 }
 
 TEST_CASE("malformed action messages are rejected") {

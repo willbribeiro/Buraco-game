@@ -15,6 +15,7 @@
 #include "game.h"
 #include "audio.h"
 #include "config.h"
+#include "net_session.h"
 #include "options.h"
 #include "renderer.h"
 #include "report.h"
@@ -234,6 +235,7 @@ int main(int argc, char** argv) {
     bool displayInfo = false;
     bool audioTest = false;
     bool twoPlayers = false;
+    std::uint16_t onlinePort = 7777;
     std::optional<int> cliScale;
     std::optional<bool> cliFullscreen;
     std::optional<bool> cliIntegerScale;
@@ -298,10 +300,17 @@ int main(int argc, char** argv) {
             displayInfo = true;
         } else if (a == "--hotseat") {
             twoPlayers = true;
+        } else if (a == "--online-port" && i + 1 < argc) {
+            char* end = nullptr;
+            const long value = std::strtol(argv[++i], &end, 10);
+            if (end && *end == '\0' && value >= 1 && value <= 65535)
+                onlinePort = std::uint16_t(value);
+            else
+                cliError = "invalid --online-port value (use 1..65535)";
         } else if (a == "--audio-test") {
             audioTest = true;
         } else if (a == "--config" || a == "--scale" || a == "--vsync" ||
-                   a == "--sound" || a == "--volume") {
+                   a == "--sound" || a == "--volume" || a == "--online-port") {
             cliError = "missing value for " + a;
         }
     }
@@ -367,6 +376,14 @@ int main(int argc, char** argv) {
 
     buraco::Game game;
     ui::UiState ui;
+    ui.onlinePort = onlinePort;
+
+    // Online session.  `onlineActive` covers the whole host/join attempt so
+    // the screens can poll it before a Game exists; after the match starts the
+    // local seat is Human and the other one Remote.
+    buraco::net::Session onlineSession;
+    bool onlineActive = false;
+    bool awaitingEcho = false;
 
     // Starts a fresh match.  Hot-seat uses two local humans and names supplied
     // by the new-game flow; solo keeps the historical {Human, AI} pair.
@@ -433,6 +450,257 @@ int main(int argc, char** argv) {
         ui.handoff = false;
     };
 
+    // A save made while online has no live session to reattach to.  Converting
+    // the remote seat to a local human keeps the match playable as hot-seat.
+    auto adoptLoadedMode = [&]() {
+        if (game.hasRemote()) {
+            game.setController(0, buraco::Controller::Human);
+            game.setController(1, buraco::Controller::Human);
+        }
+        syncViewSeat();
+    };
+
+    auto leaveOnline = [&]() {
+        onlineSession.close();
+        onlineActive = false;
+        awaitingEcho = false;
+        ui.onlineStatus.clear();
+        ui.onlineError.clear();
+    };
+
+    auto fallbackToHotseat = [&](const std::string& why) {
+        onlineSession.close();
+        onlineActive = false;
+        awaitingEcho = false;
+        game.setController(0, buraco::Controller::Human);
+        game.setController(1, buraco::Controller::Human);
+        ui.viewSeat = game.current();
+        ui.handoff = false;
+        ui.onlineStatus.clear();
+        ui.onlineError.clear();
+        game.setMessage(why);
+    };
+
+    auto startOnlineHost = [&]() {
+        const std::uint32_t matchSeed = seed ? seed : makeSeed();
+        std::string err;
+        if (!onlineSession.start(matchSeed, &err)) {
+            ui.onlineError = "Nao consegui iniciar: " + err;
+            return false;
+        }
+        game.newMatch(onlineSession.hostName(), matchSeed,
+                      onlineSession.clientName());
+        game.setController(0, buraco::Controller::Human);
+        game.setController(1, buraco::Controller::Remote);
+        ui.viewSeat = 0;
+        ui.handoff = false;
+        started = true;
+        ui.onlineStatus.clear();
+        ui.onlineError.clear();
+        ui.screen = ui::UiState::Screen::Game;
+        resetSelection();
+        onlineSession.sendFingerprint(buraco::net::fingerprintText(game));
+        game.setMessage("Partida online iniciada.");
+        return true;
+    };
+
+    auto startOnlineClient = [&]() {
+        game.newMatch(onlineSession.hostName(), onlineSession.seed(),
+                      onlineSession.clientName());
+        game.setController(0, buraco::Controller::Remote);
+        game.setController(1, buraco::Controller::Human);
+        ui.viewSeat = 1;
+        ui.handoff = false;
+        started = true;
+        ui.onlineStatus.clear();
+        ui.onlineError.clear();
+        ui.screen = ui::UiState::Screen::Game;
+        resetSelection();
+        game.setMessage("Partida online iniciada.");
+    };
+
+    auto beginHost = [&]() {
+        std::string err;
+        onlineActive = onlineSession.host(onlinePort, ui.firstName, &err);
+        ui.onlineError = onlineActive ? std::string() : err;
+        ui.onlineStatus =
+            onlineActive ? "Aguardando conexao na porta " +
+                               std::to_string(onlinePort) + "..."
+                         : std::string();
+    };
+
+    auto beginJoin = [&]() {
+        if (ui.inputAddress.empty()) ui.inputAddress = "127.0.0.1";
+        std::string err;
+        onlineActive =
+            onlineSession.join(ui.inputAddress, onlinePort, ui.firstName, &err);
+        ui.onlineError = onlineActive ? std::string() : err;
+        ui.onlineStatus =
+            onlineActive ? "Conectando a " + ui.inputAddress + ":" +
+                               std::to_string(onlinePort) + "..."
+                         : std::string();
+    };
+
+    // Every action goes through here.  Locally it is applied immediately; on
+    // the host it is also relayed; on the client it is only sent and waits for
+    // the host's echo, so both Game instances see the same action stream.
+    auto perform = [&](const buraco::net::Action& action) -> bool {
+        const bool onlineMatch =
+            onlineActive && onlineSession.started() &&
+            ui.screen == ui::UiState::Screen::Game;
+        const bool onlineHost =
+            onlineSession.role() == buraco::net::SessionRole::Host;
+        if (onlineMatch && game.phase() != buraco::Phase::HandOver &&
+            game.current() != onlineSession.localSeat()) {
+            game.setMessage("Aguarde a sua vez.");
+            return false;
+        }
+        if (onlineMatch && !onlineHost) {
+            if (awaitingEcho) return false;
+            std::string err;
+            if (!onlineSession.request(action, &err)) {
+                fallbackToHotseat(
+                    "Conexao perdida. Partida continua em hot-seat local.");
+                return false;
+            }
+            awaitingEcho = true;
+            game.setMessage("Jogada enviada. Aguardando o host...");
+            return true;
+        }
+
+        std::string err;
+        if (!buraco::net::apply(game, action, &err)) {
+            game.setMessage(err);
+            game.signalError();
+            return false;
+        }
+        if (onlineMatch && onlineHost) {
+            if (!onlineSession.relay(action, &err) ||
+                !onlineSession.sendFingerprint(
+                    buraco::net::fingerprintText(game), &err)) {
+                fallbackToHotseat(
+                    "Conexao perdida. Partida continua em hot-seat local.");
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // Host: a request arrived from the client.  Validate it against the local
+    // game and only then relay it.  The client never advances the hand.
+    auto applyRemoteAction = [&](const buraco::net::Action& action) {
+        if (!onlineActive || !started ||
+            onlineSession.role() != buraco::net::SessionRole::Host ||
+            !onlineSession.started())
+            return;
+        if (ui.screen != ui::UiState::Screen::Game) return;
+        if (game.phase() == buraco::Phase::HandOver ||
+            game.phase() == buraco::Phase::MatchOver)
+            return;
+        if (game.current() != onlineSession.remoteSeat()) return;
+
+        std::string err;
+        if (!buraco::net::apply(game, action, &err)) {
+            onlineSession.sendError(err);
+            return;
+        }
+        if (!onlineSession.relay(action, &err) ||
+            !onlineSession.sendFingerprint(buraco::net::fingerprintText(game),
+                                           &err)) {
+            fallbackToHotseat(
+                "Conexao perdida. Partida continua em hot-seat local.");
+            return;
+        }
+        resetSelection();
+    };
+
+    // Client: apply the host's echoed action.  The local request is not applied
+    // before this, which keeps an illegal request from desynchronising us.
+    auto applyRelayedAction = [&](const buraco::net::Action& action) {
+        if (!onlineActive ||
+            onlineSession.role() != buraco::net::SessionRole::Client)
+            return;
+        awaitingEcho = false;
+        std::string err;
+        if (!buraco::net::apply(game, action, &err)) {
+            fallbackToHotseat(
+                "Dessincronizacao com o host. Partida continua em hot-seat local.");
+            return;
+        }
+        resetSelection();
+    };
+
+    auto onlineTick = [&]() {
+        if (!onlineActive) return;
+        const buraco::net::SessionRole role = onlineSession.role();
+        buraco::net::SessionEvents events;
+        onlineSession.poll(events);
+
+        if (!events.error.empty()) {
+            ui.onlineError = events.error;
+            if (started && ui.screen == ui::UiState::Screen::Game) {
+                awaitingEcho = false;
+                game.setMessage(events.error);
+                game.signalError();
+            }
+        }
+        if (events.connected) {
+            ui.onlineError.clear();
+            if (role == buraco::net::SessionRole::Host)
+                ui.onlineStatus = onlineSession.clientName() +
+                                  " conectou. ENTER para comecar.";
+            else
+                ui.onlineStatus = "Conectado a " + onlineSession.hostName() +
+                                  ". Aguardando o host iniciar...";
+        }
+        if (events.started && role == buraco::net::SessionRole::Client)
+            startOnlineClient();
+
+        if (started && ui.screen == ui::UiState::Screen::Game) {
+            for (const buraco::net::Action& action : events.actions) {
+                if (!onlineActive) break;
+                if (role == buraco::net::SessionRole::Host)
+                    applyRemoteAction(action);
+                else
+                    applyRelayedAction(action);
+            }
+            if (onlineActive && role == buraco::net::SessionRole::Client &&
+                !events.fingerprint.empty() &&
+                events.fingerprint != buraco::net::fingerprintText(game)) {
+                fallbackToHotseat(
+                    "Dessincronizacao detectada. Partida continua em hot-seat local.");
+            }
+        }
+
+        if (events.disconnected && onlineActive) {
+            if (started && ui.screen == ui::UiState::Screen::Game) {
+                fallbackToHotseat(
+                    "Conexao encerrada. Partida continua em hot-seat local.");
+            } else if (role == buraco::net::SessionRole::Host &&
+                       onlineSession.state() ==
+                           buraco::net::SessionState::Listening) {
+                ui.onlineStatus =
+                    "Cliente desconectou. Aguardando outra conexao...";
+                ui.onlineError.clear();
+            } else {
+                ui.onlineError = "Conexao encerrada.";
+            }
+        }
+
+        if (!onlineSession.started() &&
+            (onlineSession.state() == buraco::net::SessionState::Error ||
+             onlineSession.state() == buraco::net::SessionState::Closed)) {
+            onlineActive = false;
+        } else if (!events.disconnected &&
+                   role == buraco::net::SessionRole::Host &&
+                   !onlineSession.connected() &&
+                   onlineSession.state() ==
+                       buraco::net::SessionState::Listening) {
+            ui.onlineStatus = "Aguardando conexao na porta " +
+                              std::to_string(onlineSession.localPort()) + "...";
+        }
+    };
+
     auto key = [&](SDL_Keycode sym) {
         using buraco::Phase;
         using Screen = ui::UiState::Screen;
@@ -473,7 +741,7 @@ int main(int argc, char** argv) {
                     ui.help = false;
                     ui.status = false;
                     ui.screen = Screen::Game;
-                    syncViewSeat();
+                    adoptLoadedMode();
                     resetSelection();
                     game.setMessage("Jogo restaurado.");
                 } else {
@@ -503,13 +771,18 @@ int main(int argc, char** argv) {
         }
 
         if (ui.screen == Screen::ModeSelect) {
-            if (sym == SDLK_UP || sym == SDLK_DOWN) {
-                ui.modeChoice = ui.modeChoice ? 0 : 1;
+            if (sym == SDLK_UP) {
+                ui.modeChoice = (ui.modeChoice + 2) % 3;
+            } else if (sym == SDLK_DOWN) {
+                ui.modeChoice = (ui.modeChoice + 1) % 3;
             } else if (sym == SDLK_1) {
                 ui.modeChoice = 0;
             } else if (sym == SDLK_2) {
                 ui.modeChoice = 1;
+            } else if (sym == SDLK_3) {
+                ui.modeChoice = 2;
             } else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
+                ui.online = ui.modeChoice == 2;
                 twoPlayers = ui.modeChoice == 1;
                 ui.twoPlayers = twoPlayers;
                 ui.nameSeat = 0;
@@ -518,6 +791,7 @@ int main(int argc, char** argv) {
                 ui.inputError.clear();
                 ui.screen = Screen::NameEntry;
             } else if (sym == SDLK_ESCAPE) {
+                ui.online = false;
                 ui.screen = Screen::Intro;
             }
             return;
@@ -529,12 +803,24 @@ int main(int argc, char** argv) {
             } else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
                 std::string name = ui.inputName;
                 if (name.empty()) {
-                    if (!twoPlayers) {
+                    if (ui.online) {
+                        name = "JOGADOR";
+                    } else if (!twoPlayers) {
                         ui.inputError = "Digite um nome antes de continuar.";
                         return;
+                    } else {
+                        // Empty input in hot-seat keeps the default seat name.
+                        name = ui.nameSeat == 0 ? "JOGADOR 1" : "JOGADOR 2";
                     }
-                    // Empty input in hot-seat keeps the default seat name.
-                    name = ui.nameSeat == 0 ? "JOGADOR 1" : "JOGADOR 2";
+                }
+                if (ui.online) {
+                    ui.firstName = name;
+                    ui.onlineChoice = 0;
+                    ui.onlineStatus.clear();
+                    ui.onlineError.clear();
+                    ui.inputError.clear();
+                    ui.screen = Screen::OnlineMenu;
+                    return;
                 }
                 if (twoPlayers && ui.nameSeat == 0) {
                     ui.firstName = name;
@@ -565,6 +851,7 @@ int main(int argc, char** argv) {
                 } else {
                     ui.inputName.clear();
                     ui.inputError.clear();
+                    ui.online = false;
                     ui.screen = flowMode ? Screen::Intro : Screen::ModeSelect;
                 }
             } else if (batch && sym >= 32 && sym < 127) {
@@ -573,10 +860,62 @@ int main(int argc, char** argv) {
             return;
         }
 
+        if (ui.screen == Screen::OnlineMenu) {
+            if (sym == SDLK_UP || sym == SDLK_DOWN) {
+                ui.onlineChoice = ui.onlineChoice ? 0 : 1;
+            } else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
+                ui.onlineError.clear();
+                if (ui.onlineChoice == 0) {
+                    ui.screen = Screen::OnlineHost;
+                    beginHost();
+                } else {
+                    ui.screen = Screen::OnlineJoin;
+                    ui.onlineStatus.clear();
+                }
+            } else if (sym == SDLK_ESCAPE) {
+                ui.online = false;
+                ui.screen = Screen::ModeSelect;
+            }
+            return;
+        }
+
+        if (ui.screen == Screen::OnlineHost) {
+            if (sym == SDLK_ESCAPE) {
+                leaveOnline();
+                ui.screen = Screen::OnlineMenu;
+            } else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
+                if (!onlineActive) {
+                    beginHost();
+                } else if (onlineSession.connected() &&
+                           !onlineSession.started()) {
+                    startOnlineHost();
+                }
+            }
+            return;
+        }
+
+        if (ui.screen == Screen::OnlineJoin) {
+            if (sym == SDLK_ESCAPE) {
+                leaveOnline();
+                ui.screen = Screen::OnlineMenu;
+            } else if (!onlineActive) {
+                if (sym == SDLK_BACKSPACE) {
+                    if (!ui.inputAddress.empty()) ui.inputAddress.pop_back();
+                } else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
+                    beginJoin();
+                }
+            }
+            return;
+        }
+
         // ---- normal game --------------------------------------------------
         // Persistence works in every screen, including before the deal, so a
         // match can be restored without starting a fresh one.
         if (sym == SDLK_F2) {
+            if (onlineActive || game.hasRemote()) {
+                game.setMessage("Gravar nao esta disponivel no modo online.");
+                return;
+            }
             if (game.saveTo(save::path()))
                 game.setMessage("Jogo gravado em " + save::path() + ".");
             else {
@@ -586,11 +925,15 @@ int main(int argc, char** argv) {
             return;
         }
         if (sym == SDLK_F5) {
+            if (onlineActive || game.hasRemote()) {
+                game.setMessage("Restaurar nao esta disponivel no modo online.");
+                return;
+            }
             if (game.loadFrom(save::path())) {
                 started = true;
                 ui.help = false;
                 ui.status = false;
-                syncViewSeat();
+                adoptLoadedMode();
                 resetSelection();
                 game.setMessage("Jogo restaurado.");
             } else {
@@ -655,15 +998,32 @@ int main(int argc, char** argv) {
 
         if (game.phase() == Phase::HandOver) {
             if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
-                game.continueAfterHand();
-                resetSelection();
+                if (onlineActive && onlineSession.started()) {
+                    // Only the host advances the hand, so both ENTERs cannot
+                    // race to start two different hands.
+                    if (onlineSession.role() ==
+                        buraco::net::SessionRole::Host) {
+                        buraco::net::Action action;
+                        action.kind = buraco::net::ActionKind::Continue;
+                        if (perform(action)) resetSelection();
+                    } else {
+                        game.setMessage("Aguardando o host continuar.");
+                    }
+                } else {
+                    game.continueAfterHand();
+                    resetSelection();
+                }
             }
             return;
         }
         if (game.phase() == Phase::MatchOver) {
             if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
-                startMatch(game.player(0).name, game.player(1).name);
-                resetSelection();
+                if (onlineActive && onlineSession.started()) {
+                    game.setMessage("Partida online encerrada. ESC para sair.");
+                } else {
+                    startMatch(game.player(0).name, game.player(1).name);
+                    resetSelection();
+                }
             }
             return;
         }
@@ -676,19 +1036,17 @@ int main(int argc, char** argv) {
         // "Grow the existing meld or lay a new one?" question.
         if (ui.layChoice) {
             if (sym == SDLK_a || sym == SDLK_s || sym == SDLK_y) {
-                const std::string err = game.layMeld(ui.layCards, ui.layTarget);
-                if (!err.empty()) {
-                    game.setMessage(err);
-                    game.signalError();
-                }
-                resetSelection();
+                buraco::net::Action action;
+                action.kind = buraco::net::ActionKind::LayMeld;
+                action.cards = ui.layCards;
+                action.target = ui.layTarget;
+                if (perform(action)) resetSelection();
             } else if (sym == SDLK_n) {
-                const std::string err = game.layMeld(ui.layCards, buraco::Game::kNewMeld);
-                if (!err.empty()) {
-                    game.setMessage(err);
-                    game.signalError();
-                }
-                resetSelection();
+                buraco::net::Action action;
+                action.kind = buraco::net::ActionKind::LayMeld;
+                action.cards = ui.layCards;
+                action.target = buraco::Game::kNewMeld;
+                if (perform(action)) resetSelection();
             } else if (sym == SDLK_ESCAPE) {
                 // Keep the cards selected so the player can adjust them.
                 ui.layChoice = false;
@@ -728,21 +1086,24 @@ int main(int argc, char** argv) {
             case SDLK_s:
             case SDLK_y:
                 if (game.phase() == Phase::Draw) {
-                    game.draw(true);
-                    resetSelection();
+                    buraco::net::Action action;
+                    action.kind = buraco::net::ActionKind::DrawTable;
+                    if (perform(action)) resetSelection();
                 }
                 return;
             case SDLK_n:
                 if (game.phase() == Phase::Draw) {
-                    game.draw(false);
-                    resetSelection();
+                    buraco::net::Action action;
+                    action.kind = buraco::net::ActionKind::DrawStock;
+                    if (perform(action)) resetSelection();
                 }
                 return;
             case SDLK_RETURN:
             case SDLK_KP_ENTER: {
                 if (game.phase() == Phase::Draw) {
-                    game.draw(false);
-                    resetSelection();
+                    buraco::net::Action action;
+                    action.kind = buraco::net::ActionKind::DrawStock;
+                    if (perform(action)) resetSelection();
                     return;
                 }
                 if (game.phase() == Phase::Play) {
@@ -751,7 +1112,9 @@ int main(int argc, char** argv) {
                          ++i)
                         if (ui.selected[i]) chosen.push_back(game.player(seat).hand[i]);
                     if (chosen.empty()) {
-                        game.requestDiscard();
+                        buraco::net::Action action;
+                        action.kind = buraco::net::ActionKind::RequestDiscard;
+                        perform(action);
                         return;
                     }
                     const buraco::Game::LayOptions opts = game.layOptions(chosen);
@@ -766,12 +1129,11 @@ int main(int argc, char** argv) {
                     const int target = !opts.targets.empty()
                                            ? opts.targets.front()
                                            : (opts.canCreate ? buraco::Game::kNewMeld : -1);
-                    const std::string err = game.layMeld(chosen, target);
-                    if (!err.empty()) {
-                        game.setMessage(err);
-                        game.signalError();
-                    }
-                    resetSelection();
+                    buraco::net::Action action;
+                    action.kind = buraco::net::ActionKind::LayMeld;
+                    action.cards = chosen;
+                    action.target = target;
+                    if (perform(action)) resetSelection();
                     return;
                 }
                 if (game.phase() == Phase::Discard) {
@@ -779,8 +1141,10 @@ int main(int argc, char** argv) {
                     if (hand.empty()) return;
                     const int idx = std::clamp(ui.cursor, 0, int(hand.size()) - 1);
                     const buraco::Card card = hand[idx];
-                    if (!game.discardCard(card)) game.signalError();
-                    resetSelection();
+                    buraco::net::Action action;
+                    action.kind = buraco::net::ActionKind::Discard;
+                    action.card = card;
+                    if (perform(action)) resetSelection();
                     return;
                 }
                 return;
@@ -1106,12 +1470,20 @@ int main(int argc, char** argv) {
                 } else {
                     key(sym);
                 }
-            } else if (e.type == SDL_TEXTINPUT && !optionsOpen &&
-                       ui.screen == ui::UiState::Screen::NameEntry) {
-                for (const char* p = e.text.text; *p; ++p) {
-                    const unsigned char c = static_cast<unsigned char>(*p);
-                    if (c >= 32 && c != 127 && ui.inputName.size() < 40)
-                        ui.inputName += char(c);
+            } else if (e.type == SDL_TEXTINPUT && !optionsOpen) {
+                if (ui.screen == ui::UiState::Screen::NameEntry) {
+                    for (const char* p = e.text.text; *p; ++p) {
+                        const unsigned char c = static_cast<unsigned char>(*p);
+                        if (c >= 32 && c != 127 && ui.inputName.size() < 40)
+                            ui.inputName += char(c);
+                    }
+                } else if (ui.screen == ui::UiState::Screen::OnlineJoin &&
+                           !onlineActive) {
+                    for (const char* p = e.text.text; *p; ++p) {
+                        const unsigned char c = static_cast<unsigned char>(*p);
+                        if (c >= 32 && c != 127 && ui.inputAddress.size() < 64)
+                            ui.inputAddress += char(c);
+                    }
                 }
             }
         }
@@ -1123,6 +1495,7 @@ int main(int argc, char** argv) {
         // The options panel pauses the match: opening it must not let the AI
         // take a turn while the player is reading the settings.
         if (!optionsOpen) {
+            onlineTick();
             game.update(dt);
             maybeHandoff();
         }

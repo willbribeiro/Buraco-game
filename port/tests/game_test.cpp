@@ -498,11 +498,13 @@ TEST_CASE("controllers start as human vs AI and can be changed") {
     CHECK(g.isHuman(0));
     CHECK(g.isAi(1));
     CHECK(!g.isHotseat());
+    CHECK(!g.hasRemote());
     CHECK_EQ(int(g.controller(0)), int(Controller::Human));
     CHECK_EQ(int(g.controller(1)), int(Controller::Ai));
 
     g.setController(1, Controller::Human);
     CHECK(g.isHotseat());
+    CHECK(!g.hasRemote());
     CHECK(g.isHuman(0));
     CHECK(g.isHuman(1));
 
@@ -514,6 +516,8 @@ TEST_CASE("controllers start as human vs AI and can be changed") {
     CHECK_EQ(int(g.controller(1)), int(Controller::Remote));
     CHECK(!g.isHuman(1));
     CHECK(!g.isAi(1));
+    CHECK(g.hasRemote());
+    CHECK(!g.isHotseat());
 }
 
 TEST_CASE("update only plays an AI seat") {
@@ -559,6 +563,30 @@ TEST_CASE("save/load keeps the per-seat controllers") {
     Game h;
     REQUIRE(h.loadFrom(path));
     CHECK(h.isHotseat());
+    CHECK_EQ(h.player(0).name, std::string("Ana"));
+    CHECK_EQ(h.player(1).name, std::string("Bia"));
+}
+
+TEST_CASE("an online save loads with remote seats and converts to hot-seat") {
+    Game g;
+    g.newMatch("Ana", 13u, "Bia");
+    g.setController(0, Controller::Human);
+    g.setController(1, Controller::Remote);
+    const std::string path = testutil::tempSavePath("online_ctrl.sav");
+    REQUIRE(g.saveTo(path));
+
+    Game h;
+    REQUIRE(h.loadFrom(path));
+    CHECK(h.hasRemote());
+    CHECK(!h.isHotseat());
+    CHECK(!h.isHuman(1));
+
+    // main.cpp does this on restore: the session is gone, so the match
+    // continues locally as hot-seat instead of waiting for a peer forever.
+    h.setController(0, Controller::Human);
+    h.setController(1, Controller::Human);
+    CHECK(h.isHotseat());
+    CHECK(!h.hasRemote());
     CHECK_EQ(h.player(0).name, std::string("Ana"));
     CHECK_EQ(h.player(1).name, std::string("Bia"));
 }

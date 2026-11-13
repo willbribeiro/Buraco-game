@@ -40,7 +40,16 @@ constexpr int COL_MELD_R = 41;
 struct UiState {
     // Screens shown before the actual game starts.  Headless/batch modes keep
     // the default `Game` so the historical scripts still start with ENTER.
-    enum class Screen { Game, Intro, ContinuePrompt, ModeSelect, NameEntry };
+    enum class Screen {
+        Game,
+        Intro,
+        ContinuePrompt,
+        ModeSelect,
+        NameEntry,
+        OnlineMenu,
+        OnlineHost,
+        OnlineJoin,
+    };
     Screen screen = Screen::Game;
 
     int cursor = 0;
@@ -69,6 +78,15 @@ struct UiState {
     std::string promptSave;  // save file offered on the ContinuePrompt screen
     std::string promptName;  // player name read from that save file
     std::string inputError;  // validation message shown under the name field
+
+    // Online flow: the name screen feeds the local player, then OnlineMenu
+    // chooses host/join.  Status and error strings are filled by main.cpp.
+    bool online = false;       // the NameEntry screen belongs to the online flow
+    int onlineChoice = 0;      // OnlineMenu: 0 = host, 1 = join
+    int onlinePort = 7777;     // displayed on the host/join screens
+    std::string inputAddress = "127.0.0.1";
+    std::string onlineStatus;
+    std::string onlineError;
 };
 
 void draw(dos::Video& v, const buraco::Game& g, const UiState& ui);

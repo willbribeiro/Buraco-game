@@ -127,15 +127,19 @@ void shutdown() {
 
 Socket::~Socket() { close(); }
 
-Socket::Socket(Socket&& other) noexcept : handle_(other.handle_) {
+Socket::Socket(Socket&& other) noexcept
+    : handle_(other.handle_), connecting_(other.connecting_) {
     other.handle_ = -1;
+    other.connecting_ = false;
 }
 
 Socket& Socket::operator=(Socket&& other) noexcept {
     if (this != &other) {
         close();
         handle_ = other.handle_;
+        connecting_ = other.connecting_;
         other.handle_ = -1;
+        other.connecting_ = false;
     }
     return *this;
 }
@@ -145,6 +149,7 @@ void Socket::close() {
         closeNative(native(handle_));
         handle_ = -1;
     }
+    connecting_ = false;
 }
 
 bool Socket::listen(std::uint16_t port, std::string* err) {
@@ -314,8 +319,116 @@ bool Socket::connect(const std::string& host, std::uint16_t port,
         if (err) *err = "connect " + host + ":" + service + " failed";
         return false;
     }
+    connecting_ = false;
     if (err) err->clear();
     return true;
+}
+
+bool Socket::beginConnect(const std::string& host, std::uint16_t port,
+                          std::string* err) {
+    if (!ensureStarted(err)) return false;
+    close();
+
+    addrinfo hints{};
+    hints.ai_family = AF_INET;  // the host listens on an IPv4 socket
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    addrinfo* results = nullptr;
+    const std::string service = std::to_string(port);
+    const int rc = ::getaddrinfo(host.c_str(), service.c_str(), &hints, &results);
+    if (rc != 0 || results == nullptr) {
+        if (err) *err = "resolve " + host + ": " + std::to_string(rc);
+        if (results) ::freeaddrinfo(results);
+        return false;
+    }
+
+    bool pending = false;
+    for (addrinfo* ai = results; ai != nullptr; ai = ai->ai_next) {
+        const NativeSocket handle =
+            ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (handle == kInvalidSocket) continue;
+        if (!setBlocking(handle, false)) {
+            closeNative(handle);
+            continue;
+        }
+        const int opened = ::connect(handle, ai->ai_addr,
+#ifdef _WIN32
+                                     int(ai->ai_addrlen)
+#else
+                                     ai->ai_addrlen
+#endif
+        );
+        if (opened == 0) {
+            handle_ = std::intptr_t(handle);
+            connecting_ = false;
+            break;
+        }
+        const int code = lastSocketError();
+        if (isConnectPending(code)) {
+            handle_ = std::intptr_t(handle);
+            connecting_ = true;
+            pending = true;
+            break;
+        }
+        closeNative(handle);
+    }
+
+    ::freeaddrinfo(results);
+    if (!valid()) {
+        if (err) *err = "connect " + host + ":" + service + " failed";
+        return false;
+    }
+    if (!pending) connecting_ = false;
+    if (err) err->clear();
+    return true;
+}
+
+IoStatus Socket::pollConnect(std::string* err) {
+    if (!valid()) {
+        if (err) *err = "socket is not connecting";
+        return IoStatus::Error;
+    }
+    if (!connecting_) return IoStatus::Ok;
+
+    fd_set writable;
+    FD_ZERO(&writable);
+    FD_SET(native(handle_), &writable);
+    timeval tv{};
+#ifdef _WIN32
+    const int ready = ::select(0, nullptr, &writable, nullptr, &tv);
+#else
+    const int ready = ::select(native(handle_) + 1, nullptr, &writable, nullptr, &tv);
+#endif
+    if (ready == 0) return IoStatus::Timeout;
+    if (ready < 0) {
+        if (err) *err = prefixed("select", lastSocketError());
+        close();
+        return IoStatus::Error;
+    }
+
+    int soError = 0;
+#ifdef _WIN32
+    int length = sizeof soError;
+#else
+    socklen_t length = sizeof soError;
+#endif
+    if (getsockopt(native(handle_), SOL_SOCKET, SO_ERROR,
+                   reinterpret_cast<char*>(&soError), &length) != 0) {
+        if (err) *err = prefixed("getsockopt", lastSocketError());
+        close();
+        return IoStatus::Error;
+    }
+    if (soError != 0) {
+        if (err) *err = prefixed("connect", soError);
+        close();
+        return IoStatus::Error;
+    }
+    connecting_ = false;
+    return IoStatus::Ok;
+}
+
+bool Socket::setNonBlocking(bool nonBlocking) {
+    return valid() && setBlocking(native(handle_), !nonBlocking);
 }
 
 std::uint16_t Socket::localPort(std::string* err) const {
@@ -435,6 +548,69 @@ IoStatus Socket::recvAll(void* data, std::size_t size, std::string* err) {
     return IoStatus::Ok;
 }
 
+IoStatus Socket::sendSome(const void* data, std::size_t size,
+                          std::size_t& sent, std::string* err) {
+    sent = 0;
+    if (!valid()) {
+        if (err) *err = "socket is not connected";
+        return IoStatus::Error;
+    }
+    if (size == 0) return IoStatus::Ok;
+    for (;;) {
+#ifdef _WIN32
+        const int n = ::send(native(handle_), static_cast<const char*>(data),
+                             int(std::min<std::size_t>(size, kMaxFrame)), 0);
+#else
+        const long n =
+            long(::send(native(handle_), data, size, MSG_NOSIGNAL));
+#endif
+        if (n > 0) {
+            sent = std::size_t(n);
+            return IoStatus::Ok;
+        }
+        if (n == 0) {
+            if (err) *err = "connection closed";
+            return IoStatus::Closed;
+        }
+        const int code = lastSocketError();
+        if (isInterrupted(code)) continue;
+        if (isTimeout(code)) return IoStatus::Timeout;
+        if (err) *err = prefixed("send", code);
+        return IoStatus::Error;
+    }
+}
+
+IoStatus Socket::recvSome(void* data, std::size_t capacity,
+                          std::size_t& received, std::string* err) {
+    received = 0;
+    if (!valid()) {
+        if (err) *err = "socket is not connected";
+        return IoStatus::Error;
+    }
+    if (capacity == 0) return IoStatus::Ok;
+    for (;;) {
+#ifdef _WIN32
+        const int n = ::recv(native(handle_), static_cast<char*>(data),
+                             int(std::min<std::size_t>(capacity, kMaxFrame)), 0);
+#else
+        const long n = long(::recv(native(handle_), data, capacity, 0));
+#endif
+        if (n > 0) {
+            received = std::size_t(n);
+            return IoStatus::Ok;
+        }
+        if (n == 0) {
+            if (err) *err = "connection closed";
+            return IoStatus::Closed;
+        }
+        const int code = lastSocketError();
+        if (isInterrupted(code)) continue;
+        if (isTimeout(code)) return IoStatus::Timeout;
+        if (err) *err = prefixed("recv", code);
+        return IoStatus::Error;
+    }
+}
+
 bool sendMessage(Socket& socket, const std::string& payload, std::string* err) {
     if (payload.size() > kMaxFrame) {
         if (err) *err = "frame too large";
@@ -472,6 +648,57 @@ IoStatus recvMessage(Socket& socket, std::string& payload, std::string* err) {
     payload.resize(size);
     if (size == 0) return IoStatus::Ok;
     return socket.recvAll(payload.data(), payload.size(), err);
+}
+
+IoStatus FrameReader::read(Socket& socket, std::vector<std::string>& messages,
+                           std::string* err) {
+    messages.clear();
+    bool any = false;
+    bool closed = false;
+    for (;;) {
+        char chunk[4096];
+        std::size_t got = 0;
+        const IoStatus status = socket.recvSome(chunk, sizeof chunk, got, err);
+        if (status == IoStatus::Timeout) break;
+        if (status == IoStatus::Closed) {
+            closed = true;
+            break;
+        }
+        if (status != IoStatus::Ok) return status;
+        if (got == 0) break;
+        any = true;
+        buffer_.append(chunk, got);
+    }
+
+    std::size_t offset = 0;
+    while (buffer_.size() - offset >= 4) {
+        const unsigned char* header =
+            reinterpret_cast<const unsigned char*>(buffer_.data() + offset);
+        const std::uint32_t size = (std::uint32_t(header[0]) << 24) |
+                                   (std::uint32_t(header[1]) << 16) |
+                                   (std::uint32_t(header[2]) << 8) |
+                                   std::uint32_t(header[3]);
+        if (size > kMaxFrame) {
+            if (err) *err = "frame too large";
+            buffer_.clear();
+            socket.close();
+            return IoStatus::Error;
+        }
+        if (buffer_.size() - offset < std::size_t(size) + 4) break;
+        messages.emplace_back(buffer_, offset + 4, size);
+        offset += std::size_t(size) + 4;
+    }
+    if (offset > 0) buffer_.erase(0, offset);
+
+    if (closed) {
+        if (!buffer_.empty()) {
+            if (err) *err = "connection closed mid-frame";
+            buffer_.clear();
+            return IoStatus::Error;
+        }
+        return IoStatus::Closed;
+    }
+    return any ? IoStatus::Ok : IoStatus::Timeout;
 }
 
 }  // namespace buraco::net

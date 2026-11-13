@@ -32,7 +32,7 @@ extraída do próprio jogo).
 | Tela inicial, continuar jogo gravado ou novo jogo com 1/2 jogadores e nomes | ✅ |
 | Efeitos sonoros sintetizados (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro), com volume | ✅ |
 | Modo headless para regressão/diff (inclusive do fluxo inicial) | ✅ |
-| Fundação de rede: TCP, protocolo de ações e lockstep determinístico | ✅ |
+| Modo online na LAN: host/cliente, ações em lockstep e detecção de dessincronização | ✅ |
 
 ## 2. Build
 
@@ -153,6 +153,7 @@ alteram o arquivo):
 .\build\buraco.exe --fullscreen --integer-scale
 .\build\buraco.exe --sound off --volume 40
 .\build\buraco.exe --hotseat               # dois jogadores locais (troca de vez)
+.\build\buraco.exe --online-port 7800      # porta do host online (padrão 7777)
 .\build\buraco.exe --audio-test            # toca todos os efeitos pelo dispositivo real
 .\build\buraco.exe --config work\meu.cfg --reset-config
 ```
@@ -175,24 +176,46 @@ escolhem a linha, esquerda/direita alteram o valor (volume em passos de 10%),
 `ENTER` aplica e `F9`/`ESC` fecha. A partida fica pausada enquanto a tela está
 aberta, e as preferências são gravadas no `buraco.cfg` ao sair.
 
-### Fundação de rede (fase 3)
+### Modo online (LAN)
 
-A base do modo online já está no núcleo, ainda sem tela nem argumentos novos:
+O fluxo de novo jogo oferece `3 online`, para dois computadores na mesma rede
+local. A tela de nome pergunta apenas o nome do jogador local e depois há duas
+opções:
+
+* **Criar partida (host)**: abre a porta TCP `7777` (ou a definida em
+  `--online-port 1..65535`) e mostra a porta e as instruções para o outro
+  computador. Quando o cliente conecta, o host aperta `ENTER` para começar.
+* **Entrar em partida (cliente)**: pede o endereço/IP do host (`127.0.0.1` por
+  padrão) e conecta; a partida começa quando o host envia a semente.
+
+O host ocupa o assento 0 e o cliente o assento 1. Os dois lados constroem a
+mesma partida a partir dos mesmos nomes e semente e aplicam a mesma sequência
+de ações em lockstep:
 
 * `net.*` implementa TCP sobre Winsock2/BSD sockets (nada além do sistema
   operacional), com frames de 4 bytes de tamanho + payload (limite de 1 MiB),
-  timeouts de envio/recepção e detecção de conexão encerrada.
-* `net_protocol.*` define `BURACO-NET 1 HELLO <nome>` e
-  `BURACO-NET 1 ACT <ação>` (`draw stock|table`, `lay`, `discard`,
-  `request-discard`, `prompt yes|no`, `continue`).
-* O modelo é determinístico e em lockstep: os dois lados começam a mesma
-  partida com a mesma semente e aplicam a mesma sequência de ações. Cabe ao
-  host validar a ação do assento remoto antes de aplicá-la e retransmití-la; um
-  fingerprint FNV-1a do estado detecta dessincronização.
+  timeouts, envio/recepção não bloqueantes e detecção de conexão encerrada.
+* `net_protocol.*` define `BURACO-NET 1 HELLO <nome>`, `SEAT`, `START <semente>`,
+  `ACT <ação>` (`draw stock|table`, `lay`, `discard`, `request-discard`,
+  `prompt yes|no`, `continue`), `FP <fingerprint>` e `ERR <texto>`.
+* `net_session.*` mantém a máquina de estados host/cliente sem threads: listen,
+  connect não bloqueante, handshake com timeout de 10 s, fila de envio, relay e
+  eventos de conexão/desconexão. O host volta a aceitar outro cliente se a
+  queda acontecer antes do início da partida.
+* Só o host valida e aplica a ação pedida pelo cliente; o cliente apenas envia
+  o pedido e aplica o eco. Depois de cada ação o host envia um fingerprint
+  FNV-1a do estado, e o cliente compara com o seu. Só o host avança a mão na
+  tela de contagem.
+* Se a conexão cair ou os fingerprints divergirem, a partida continua em
+  hot-seat local, com aviso na tela. `F2`/`F5` ficam desabilitados durante o
+  online; um save feito nesse modo, se restaurado depois, abre como hot-seat
+  (o assento remoto vira humano).
 * `Controller::Remote` nunca age sozinho (`update()` só executa a IA), e ações
   ilegais são recusadas sem alterar o estado.
-* Ainda não há tela de host/entrar, descoberta de sala, reconexão nem
-  criptografia; isso fica para a fase 4.
+
+Limitações: é um modo para LAN, sem descoberta automática de sala, reconexão,
+autenticação ou criptografia. O firewall do host precisa permitir a porta
+escolhida.
 
 ## 3. Controles
 
@@ -209,12 +232,14 @@ A base do modo online já está no núcleo, ainda sem tela nem argumentos novos:
 | ENTER (fim de mão) | próxima mão |
 | ENTER (tela inicial) | segue para continuar um save encontrado ou pede o nome |
 | S / N (tela de save) | continua o jogo gravado (S) ou começa um novo (N) |
-| ↑ / ↓, 1 / 2, ENTER (novo jogo) | escolhe 1 jogador (contra a IA) ou 2 jogadores (hot-seat) |
-| texto + ENTER (nome) | no solo vira o arquivo de progresso; no hot-seat, um nome por assento |
+| ↑ / ↓, 1 / 2 / 3, ENTER (novo jogo) | escolhe 1 jogador (IA), 2 jogadores (hot-seat) ou 3 online |
+| texto + ENTER (nome) | no solo vira o arquivo de progresso; no hot-seat, um nome por assento; no online, o nome do jogador local |
+| ↑ / ↓ + ENTER (online) | escolhe criar a partida (host) ou entrar (cliente) |
+| texto + ENTER (endereço) | no cliente, digita o IP/nome do host e conecta |
 | F1 | tela de ajuda (o mesmo texto da tela inicial) |
 | F3 | situação geral em tela cheia (partidas, vitórias, pontos, mãos, jogos, mesa e monte) |
-| F2 | grava a partida em `<nome do jogador>.sav` (ou `<nome>2.sav`, `<nome>3.sav`, ...) |
-| F5 | restaura a partida gravada no caminho atual |
+| F2 | grava a partida em `<nome do jogador>.sav` (ou `<nome>2.sav`, `<nome>3.sav`, ...); indisponível no online |
+| F5 | restaura a partida gravada no caminho atual; indisponível no online |
 | F9 | opções de vídeo e som: escala, ajuste, tela cheia, VSync, maximizada, som, volume e posição |
 | F11 / Alt+Enter | alterna janela / tela cheia (a preferência é salva ao sair) |
 | ESC | limpa a seleção; sem seleção, encerra (na tela inicial, encerra) |
@@ -229,14 +254,16 @@ na pasta do jogo (ao lado de `buraco.exe`) o `.sav` mais recente que comece com
 * **se encontrar**, pergunta se o jogador quer continuar (`S`) ou criar um novo
   jogo (`N`);
 * **se não encontrar** (ou se o jogador escolher `N`), pergunta quantos jogadores
-  vão jogar — `1 jogador` (contra a IA) ou `2 jogadores` (hot-seat) — e pede o
-  nome de cada assento.
+  vão jogar — `1 jogador` (contra a IA), `2 jogadores` (hot-seat) ou `3 online`
+  — e pede o nome. No online, depois do nome aparecem as opções de criar a
+  partida (host) ou entrar em uma existente (cliente).
 
 O nome digitado é usado como nome do arquivo de progresso. Se já existir um
 arquivo com esse nome, o porte acrescenta numeração progressiva
 (`joao.sav`, `joao2.sav`, `joao3.sav`, ...); no hot-seat o save é
 `<nome1> x <nome2>.sav`. `F2` grava no arquivo escolhido no início da partida;
-`F5` restaura esse mesmo caminho.
+`F5` restaura esse mesmo caminho. No modo online os dois atalhos ficam
+desabilitados.
 
 ## 4. Modos de execução (teste sem janela)
 
@@ -268,7 +295,9 @@ motor de regras sem depender de foco de janela (comandos a partir de `port\`):
 `--save <arquivo>` troca o caminho padrão do save e também a pasta usada na
 descoberta do fluxo inicial (útil para testes sem sobrescrever um save real).
 `--savedir <pasta>` define explicitamente a "pasta do jogo" para descoberta e
-numeração dos saves. `--flow` faz um `--script` headless começar na tela de
+numeração dos saves. `--online-port N` (1..65535, padrão 7777) escolhe a porta
+do host no modo online e a porta usada pelo cliente ao conectar. `--flow` faz
+um `--script` headless começar na tela de
 apresentação (em vez de direto na mesa), permitindo testar o fluxo
 continuar/novo jogo e a digitação do nome. `--check` imprime uma linha por mão fechada
 (`# hand N scored at step S: p0 ... p1 ...`) e termina com
@@ -298,6 +327,7 @@ src/save.*          descoberta e nomes dos arquivos de progresso
 src/report.*        dumps de estado e invariantes das 108 cartas
 src/net.*           transporte TCP, framing e timeouts
 src/net_protocol.*  hello, ações de rede e fingerprint do estado
+src/net_session.*   sessão host/cliente: handshake, relay e reconexão do host
 tests/              testes unitários (harness próprio, sem Catch2)
 assets/             font8x16.bin (256 glifos × 16 bytes, VGA 8×16)
 ```
@@ -395,10 +425,11 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 ## 8. Validação
 
-* `ctest --test-dir build` roda os 153 casos de teste (cartas, máquina de
-  turnos, save/load, nomes de arquivo, controladores e hot-seat, rede TCP e
-  protocolo, invariantes, tela, configuração de vídeo e som, cálculo e estado
-  da janela, tela de opções, síntese e eventos sonoros). O caso de tela compara
+* `ctest --test-dir build` roda os 168 casos de teste (cartas, máquina de
+  turnos, save/load, nomes de arquivo, controladores e hot-seat, rede TCP,
+  protocolo, sessão host/cliente e partidas online em lockstep, invariantes,
+  tela, configuração de vídeo e som, cálculo e estado da janela, tela de
+  opções, síntese e eventos sonoros). O caso de tela compara
   o hash das 25 linhas com a saída capturada de `--auto 400 --seed 1234`, então
   a divisão do antigo `main.cpp` em módulos não mudou um pixel.
 * `shots/33_deal720.png` (original) vs. `shots/41_port_deal.png` (porte):
@@ -425,8 +456,13 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
   rodapé `VEZ: ana` / `VEZ: bia` a cada turno e mantém o mesmo fluxo headless;
   `--check`, `--auto`, `--savetest` e o fluxo solo continuam byte a byte
   idênticos ao `HEAD` anterior (mesmos hashes SHA-256).
-* Os testes de rede abrem sockets loopback reais: conferem framing, timeout,
-  frame acima do limite, conexão encerrada, codecs de `HELLO`/ação, recusa de
-  ações ilegais sem mudar o estado e 400 ações em lockstep entre dois `Game`.
+* Os testes de rede abrem sockets loopback reais: conferem framing (inclusive
+  frames partidos/coalescidos), timeout, frame acima do limite, conexão
+  encerrada, codecs de `HELLO`/`SEAT`/`START`/`ACT`/`FP`/`ERR`, recusa de ações
+  ilegais sem mudar o estado, handshake e troca de cliente na sessão e uma
+  partida real de duas instâncias de `Game` em lockstep pela sessão TCP,
+  comparando os fingerprints a cada ação. A UI online de duas janelas não foi
+  exercitada manualmente; o caminho de rede por baixo dela é o coberto por
+  esses testes de loopback.
 * Capturas do porte: `shots/50_port_melds.png`, `shots/52_port_melds.png`,
   `shots/60_port_score.png` (tela de contagem detalhada).

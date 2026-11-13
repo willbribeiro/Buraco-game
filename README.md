@@ -83,6 +83,8 @@ Contagem de pontos, jogo por jogo, com bônus e descontos:
   ou começar um novo. No jogo novo, o nome digitado vira o arquivo de progresso
   (`joao.sav`, `joao2.sav`, ...). `F2` grava e `F3` mostra a situação geral em
   tela cheia.
+* Modo hot-seat local e modo online na LAN (host/cliente, ações em lockstep e
+  fallback para hot-seat), com um nome por jogador.
 * Fonte VGA 8×16 autêntica (256 glifos × 16 bytes) extraída de uma run do
   `ALLCHARS.COM` no DOSBox-X.
 * Modo *headless* determinístico (`--auto`, `--script`, `--check`,
@@ -127,8 +129,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 Os testes usam um harness próprio (`TEST_CASE`/`CHECK`), sem Catch2, e cobrem
-cartas/jogos, máquina de turnos, save/load, nomes de arquivo, invariantes e a
-renderização determinística da tela. Detalhes em
+cartas/jogos, máquina de turnos, save/load, nomes de arquivo, hot-seat, rede
+host/cliente, invariantes e a renderização determinística da tela. Detalhes em
 [`port/tests/README.md`](port/tests/README.md).
 
 ## Notas
@@ -145,6 +147,6 @@ renderização determinística da tela. Detalhes em
 
 - [x] Som
 - [x] Modo hot-seat local (dois jogadores, troca de vez)
-- [ ] Modo multi-jogador em rede (fundação TCP/protocolo pronta)
+- [x] Modo multi-jogador em rede (host/cliente na LAN, lockstep e fallback para hot-seat)
 - [ ] Tradução da interface
 - [x] Opções de janela/redimensionamento

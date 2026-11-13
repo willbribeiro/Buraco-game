@@ -10,6 +10,11 @@ namespace {
 
 constexpr const char* kMagic = "BURACO-NET";
 
+std::string envelope(const std::string& body) {
+    return std::string(kMagic) + " " + std::to_string(kProtocolVersion) + " " +
+           body;
+}
+
 bool fail(std::string* err, const std::string& why) {
     if (err) *err = why;
     return false;
@@ -60,6 +65,103 @@ bool parseHello(const std::string& message, std::string& name,
     if (!name.empty() && name.front() == ' ') name.erase(name.begin());
     if (name.size() > kMaxNameLength) return fail(err, "nome longo demais");
     return true;
+}
+
+std::string makeSeat(int seat) {
+    return envelope("SEAT " + std::to_string(seat));
+}
+
+bool parseSeat(const std::string& message, int& seat, std::string* err) {
+    std::string rest;
+    if (!stripEnvelope(message, rest, err)) return false;
+    std::istringstream in(rest);
+    std::string tag;
+    int value = 0;
+    if (!(in >> tag) || tag != "SEAT") return fail(err, "esperava SEAT");
+    if (!(in >> value) || (value != 0 && value != 1))
+        return fail(err, "assento invalido");
+    if (!noExtra(in, err)) return false;
+    seat = value;
+    return true;
+}
+
+std::string makeStart(std::uint32_t seed) {
+    return envelope("START " + std::to_string(seed));
+}
+
+bool parseStart(const std::string& message, std::uint32_t& seed,
+                std::string* err) {
+    std::string rest;
+    if (!stripEnvelope(message, rest, err)) return false;
+    std::istringstream in(rest);
+    std::string tag;
+    if (!(in >> tag) || tag != "START") return fail(err, "esperava START");
+    std::string token;
+    if (!(in >> token)) return fail(err, "semente ausente");
+    if (token.size() > 10) return fail(err, "semente invalida");
+    for (char c : token)
+        if (c < '0' || c > '9') return fail(err, "semente invalida");
+    if (!noExtra(in, err)) return false;
+    const unsigned long long value = std::stoull(token);
+    if (value > 0xFFFFFFFFull) return fail(err, "semente invalida");
+    seed = std::uint32_t(value);
+    return true;
+}
+
+std::string makeFingerprint(const std::string& text) {
+    return envelope("FP " + text);
+}
+
+bool parseFingerprint(const std::string& message, std::string& text,
+                      std::string* err) {
+    std::string rest;
+    if (!stripEnvelope(message, rest, err)) return false;
+    std::istringstream in(rest);
+    std::string tag;
+    if (!(in >> tag) || tag != "FP") return fail(err, "esperava FP");
+    std::string token;
+    if (!(in >> token) || token.size() != 16)
+        return fail(err, "fingerprint invalido");
+    for (char& c : token) {
+        if (c >= 'A' && c <= 'F') c = char(c - 'A' + 'a');
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+            return fail(err, "fingerprint invalido");
+    }
+    if (!noExtra(in, err)) return false;
+    text = token;
+    return true;
+}
+
+std::string makeError(const std::string& text) {
+    std::string clean;
+    for (char c : text) {
+        if (c == '\r' || c == '\n') continue;
+        clean += c;
+        if (clean.size() == 120) break;
+    }
+    return envelope("ERR " + clean);
+}
+
+bool parseError(const std::string& message, std::string& text,
+                std::string* err) {
+    std::string rest;
+    if (!stripEnvelope(message, rest, err)) return false;
+    std::istringstream in(rest);
+    std::string tag;
+    if (!(in >> tag) || tag != "ERR") return fail(err, "esperava ERR");
+    std::getline(in, text);
+    if (!text.empty() && text.front() == ' ') text.erase(text.begin());
+    if (text.size() > 120) return fail(err, "erro longo demais");
+    return true;
+}
+
+std::string tagOf(const std::string& message) {
+    std::string rest;
+    if (!stripEnvelope(message, rest, nullptr)) return {};
+    std::istringstream in(rest);
+    std::string tag;
+    if (!(in >> tag)) return {};
+    return tag;
 }
 
 std::string makeAction(const Action& action) {
@@ -169,8 +271,10 @@ bool apply(Game& game, const Action& action, std::string* err) {
         case ActionKind::DrawStock:
             if (game.phase() != Phase::Draw)
                 return fail(err, "nao e a fase de compra");
-            if (game.monte().empty()) return fail(err, "monte vazio");
-            return game.draw(false) || fail(err, "compra recusada");
+            // An empty stock is not a refusal: draw() still advances to Play
+            // (the original ends the hand that way), so this must be relayed.
+            game.draw(false);
+            return true;
         case ActionKind::DrawTable:
             if (game.phase() != Phase::Draw)
                 return fail(err, "nao e a fase de compra");

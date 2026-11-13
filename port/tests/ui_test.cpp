@@ -227,6 +227,134 @@ TEST_CASE("the mode screen offers solo and hot-seat") {
     CHECK(marker);
 }
 
+TEST_CASE("the mode screen offers online play") {
+    dos::Video v;
+    ui::UiState state;
+    state.screen = ui::UiState::Screen::ModeSelect;
+    state.modeChoice = 2;
+    Game g;
+    ui::draw(v, g, state);
+
+    bool online = false, marker = false, hotseat = false;
+    for (int r = 0; r < ui::ROWS; ++r) {
+        const std::string line = rowText(v, r);
+        if (line.find("3 online") != std::string::npos) online = true;
+        if (line.find("> 3 online") != std::string::npos) marker = true;
+        if (line.find("2 jogadores") != std::string::npos) hotseat = true;
+    }
+    CHECK(online);
+    CHECK(marker);
+    CHECK(hotseat);
+}
+
+TEST_CASE("the online name entry asks for one name and never mentions saves") {
+    dos::Video v;
+    ui::UiState state;
+    state.screen = ui::UiState::Screen::NameEntry;
+    state.online = true;
+    state.inputName = "Ana";
+    Game g;
+    ui::draw(v, g, state);
+
+    bool prompt = false, echoed = false, save = false;
+    for (int r = 0; r < ui::ROWS; ++r) {
+        const std::string line = rowText(v, r);
+        if (line.find("Nome para a partida online?") != std::string::npos)
+            prompt = true;
+        if (line.find("> Ana_") != std::string::npos) echoed = true;
+        if (line.find("arquivo de progresso") != std::string::npos) save = true;
+    }
+    CHECK(prompt);
+    CHECK(echoed);
+    CHECK(!save);
+}
+
+TEST_CASE("the online menu offers host and join") {
+    dos::Video v;
+    ui::UiState state;
+    state.screen = ui::UiState::Screen::OnlineMenu;
+    state.onlineChoice = 1;
+    Game g;
+    ui::draw(v, g, state);
+
+    bool title = false, host = false, join = false;
+    for (int r = 0; r < ui::ROWS; ++r) {
+        const std::string line = rowText(v, r);
+        if (line.find("Jogar com outro computador") != std::string::npos)
+            title = true;
+        if (line.find("Criar partida") != std::string::npos) host = true;
+        if (line.find("> Entrar em partida") != std::string::npos) join = true;
+    }
+    CHECK(title);
+    CHECK(host);
+    CHECK(join);
+}
+
+TEST_CASE("the online host and join screens show port, address and status") {
+    Game g;
+    dos::Video hostVideo;
+    ui::UiState hostState;
+    hostState.screen = ui::UiState::Screen::OnlineHost;
+    hostState.onlinePort = 7777;
+    hostState.onlineStatus = "Bia conectou. ENTER para comecar.";
+    hostState.onlineError = "porta ocupada";
+    ui::draw(hostVideo, g, hostState);
+
+    bool port = false, status = false, error = false;
+    for (int r = 0; r < ui::ROWS; ++r) {
+        const std::string line = rowText(hostVideo, r);
+        if (line.find("Porta: 7777") != std::string::npos) port = true;
+        if (line.find("Bia conectou") != std::string::npos) status = true;
+        if (line.find("porta ocupada") != std::string::npos) error = true;
+    }
+    CHECK(port);
+    CHECK(status);
+    CHECK(error);
+
+    dos::Video joinVideo;
+    ui::UiState joinState;
+    joinState.screen = ui::UiState::Screen::OnlineJoin;
+    joinState.inputAddress = "192.168.0.10";
+    joinState.onlineStatus = "Conectando...";
+    ui::draw(joinVideo, g, joinState);
+    bool address = false, connecting = false;
+    for (int r = 0; r < ui::ROWS; ++r) {
+        const std::string line = rowText(joinVideo, r);
+        if (line.find("> 192.168.0.10_") != std::string::npos) address = true;
+        if (line.find("Conectando...") != std::string::npos) connecting = true;
+    }
+    CHECK(address);
+    CHECK(connecting);
+}
+
+TEST_CASE("online HUD names the seat to move without revealing the other hand") {
+    Game g;
+    g.newMatch("Ana", 5u, "Bia");
+    g.setController(0, Controller::Human);
+    g.setController(1, Controller::Remote);
+    g.setMessage("Sua vez.");
+
+    dos::Video v;
+    ui::UiState state;
+    state.viewSeat = 0;
+    state.selected.assign(g.player(0).hand.size(), false);
+    ui::draw(v, g, state);
+    CHECK(rowText(v, ui::ROW_MSG).find("VEZ: Ana") != std::string::npos);
+
+    REQUIRE(g.draw(false));
+    g.requestDiscard();
+    REQUIRE(g.discardCard(g.player(0).hand.front()));
+    CHECK_EQ(g.current(), 1);
+
+    dos::Video other;
+    ui::UiState otherState;
+    otherState.viewSeat = 0;
+    otherState.selected.assign(g.player(0).hand.size(), false);
+    ui::draw(other, g, otherState);
+    CHECK(rowText(other, ui::ROW_MSG).find("VEZ: Bia") != std::string::npos);
+    CHECK(rowText(other, ui::ROW_LABEL).find("Minha mao.") != std::string::npos);
+}
+
 TEST_CASE("the name entry asks for each hot-seat player") {
     dos::Video v;
     ui::UiState state;

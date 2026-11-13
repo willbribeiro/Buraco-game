@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace buraco::net {
 
@@ -50,6 +51,16 @@ public:
     bool connect(const std::string& host, std::uint16_t port, int timeoutMs,
                  std::string* err = nullptr);
 
+    // Non-blocking connect used by the online screens.  `beginConnect` starts
+    // the attempt; `pollConnect` reports Ok when it completed (or Timeout
+    // while still pending).  The socket is left in non-blocking mode.
+    bool beginConnect(const std::string& host, std::uint16_t port,
+                      std::string* err = nullptr);
+    IoStatus pollConnect(std::string* err = nullptr);
+
+    // Non-blocking mode for FrameReader/Session polling.
+    bool setNonBlocking(bool nonBlocking);
+
     std::uint16_t localPort(std::string* err = nullptr) const;
 
     // Socket-level timeouts, honoured by sendAll/recvAll.  A timeout in the
@@ -61,9 +72,20 @@ public:
     IoStatus sendAll(const void* data, std::size_t size, std::string* err = nullptr);
     IoStatus recvAll(void* data, std::size_t size, std::string* err = nullptr);
 
+    // Reads whatever is available without waiting.  Returns Timeout with
+    // `received == 0` when the socket would block.
+    IoStatus recvSome(void* data, std::size_t capacity, std::size_t& received,
+                      std::string* err = nullptr);
+
+    // Writes whatever the socket accepts without waiting.  Returns Timeout
+    // with `sent == 0` when the buffer is full; the caller keeps the rest.
+    IoStatus sendSome(const void* data, std::size_t size, std::size_t& sent,
+                      std::string* err = nullptr);
+
 private:
     explicit Socket(std::intptr_t handle) : handle_(handle) {}
     std::intptr_t handle_ = -1;
+    bool connecting_ = false;
 };
 
 // Sends one length-prefixed frame (4-byte big-endian length + payload).
@@ -73,5 +95,18 @@ bool sendMessage(Socket& socket, const std::string& payload,
 // Receives one frame.  On IoStatus::Error the connection should be closed.
 IoStatus recvMessage(Socket& socket, std::string& payload,
                      std::string* err = nullptr);
+
+// Incremental frame parser for a non-blocking socket.  Feed it every frame;
+// complete messages accumulate in `messages`.  A partial frame stays buffered
+// between calls, so a message split across TCP reads is reassembled.
+class FrameReader {
+public:
+    IoStatus read(Socket& socket, std::vector<std::string>& messages,
+                  std::string* err = nullptr);
+    void clear() { buffer_.clear(); }
+
+private:
+    std::string buffer_;
+};
 
 }  // namespace buraco::net

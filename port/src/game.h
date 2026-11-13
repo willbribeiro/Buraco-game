@@ -88,6 +88,10 @@ public:
         return controllers_[0] == Controller::Human &&
                controllers_[1] == Controller::Human;
     }
+    bool hasRemote() const {
+        return controllers_[0] == Controller::Remote ||
+               controllers_[1] == Controller::Remote;
+    }
     int meldCount(int seat) const {
         int n = 0;
         for (const Meld& m : players_[seat].melds)

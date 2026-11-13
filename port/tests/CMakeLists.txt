@@ -6,6 +6,7 @@ add_executable(buraco_tests
     config_test.cpp
     game_test.cpp
     net_test.cpp
+    net_session_test.cpp
     options_test.cpp
     save_test.cpp
     report_test.cpp

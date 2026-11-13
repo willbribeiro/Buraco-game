@@ -41,6 +41,29 @@ std::string makeHello(const std::string& name);
 bool parseHello(const std::string& message, std::string& name,
                 std::string* err = nullptr);
 
+// `BURACO-NET 1 SEAT <0|1>` (host -> client)
+std::string makeSeat(int seat);
+bool parseSeat(const std::string& message, int& seat,
+               std::string* err = nullptr);
+
+// `BURACO-NET 1 START <seed>` (host -> client)
+std::string makeStart(std::uint32_t seed);
+bool parseStart(const std::string& message, std::uint32_t& seed,
+                std::string* err = nullptr);
+
+// `BURACO-NET 1 FP <16 hex digits>` (host -> client)
+std::string makeFingerprint(const std::string& text);
+bool parseFingerprint(const std::string& message, std::string& text,
+                      std::string* err = nullptr);
+
+// `BURACO-NET 1 ERR <text>` (either direction, one line)
+std::string makeError(const std::string& text);
+bool parseError(const std::string& message, std::string& text,
+                std::string* err = nullptr);
+
+// Tag of a well-formed envelope ("HELLO", "ACT", ...), or "" when invalid.
+std::string tagOf(const std::string& message);
+
 // `BURACO-NET 1 ACT <action>`
 std::string makeAction(const Action& action);
 bool parseAction(const std::string& message, Action& action,

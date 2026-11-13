@@ -20,6 +20,7 @@ add_library(buraco_core STATIC
     src/game_save.cpp
     src/net.cpp
     src/net_protocol.cpp
+    src/net_session.cpp
     src/options.cpp
     src/sound.cpp
     src/ui.cpp
