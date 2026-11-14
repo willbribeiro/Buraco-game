@@ -69,3 +69,20 @@ add_custom_command(TARGET buraco POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:buraco>/assets")
+
+# Bundle the MinGW runtime DLLs next to the executable so the release zip runs
+# on machines that do not have the toolchain installed.  Only the DLLs the
+# linker actually asks for are copied, and missing ones are skipped, so other
+# toolchains (for example a static build) keep working unchanged.
+if (MINGW)
+    get_filename_component(BURACO_MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    foreach (BURACO_RUNTIME_DLL
+             libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll)
+        if (EXISTS "${BURACO_MINGW_BIN}/${BURACO_RUNTIME_DLL}")
+            add_custom_command(TARGET buraco POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${BURACO_MINGW_BIN}/${BURACO_RUNTIME_DLL}"
+                    "$<TARGET_FILE_DIR:buraco>/${BURACO_RUNTIME_DLL}")
+        endif()
+    endforeach()
+endif()

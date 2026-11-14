@@ -62,9 +62,14 @@ cmake -S port -B port\build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release `
       -DSDL2_DIR="$sdl\lib\cmake\SDL2"
 cmake --build port\build
 
-Copy-Item "$sdl\bin\SDL2.dll" port\build\   # o POST_BUILD copia assets/, não a DLL
+Copy-Item "$sdl\bin\SDL2.dll" port\build\   # SDL2 vem do SDK, não do MinGW
 .\port\build\buraco.exe
 ```
+
+O `POST_BUILD` do CMake copia `assets/` e, em builds MinGW, também as DLLs de
+runtime do compilador (`libgcc_s_seh-1.dll`, `libstdc++-6.dll` e
+`libwinpthread-1.dll`). Assim o zip da release roda em máquinas sem o
+toolchain instalado; a `SDL2.dll` continua sendo copiada à parte.
 
 `work/toolchain` é uma pasta local de desenvolvimento e não é versionada. O
 `-Download` aceita `-Sha256 <hash>` para versões novas; sem um hash conhecido
@@ -493,3 +498,8 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
   esses testes de loopback.
 * Capturas do porte: `shots/50_port_melds.png`, `shots/52_port_melds.png`,
   `shots/60_port_score.png` (tela de contagem detalhada).
+* O zip `buraco-1.5.1-windows-x86_64.zip` foi extraído em uma pasta limpa e
+  executado sem o MinGW no `PATH`: `--auto 4000 --seed 777` deu o hash
+  `78FB74EA…` e `--check` terminou com `OK`. O pacote leva as três DLLs de
+  runtime do compilador ao lado do `buraco.exe`, e o `objdump -p` confirma que
+  todas as importações não-sistêmicas estão presentes no zip.

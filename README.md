@@ -35,6 +35,11 @@ Os scripts de build detalhados usam *MinGW-w64 GCC 16.2.0 (UCRT, POSIX, SEH)*,
 *CMake 4.4.4* e *SDL2 2.32.10* (pacote `SDL2-devel-*-mingw.zip`). Fluxo com
 `vcpkg` + gerador Visual Studio também funciona — veja `port/README.md`.
 
+Em builds MinGW, o `POST_BUILD` copia para `port\build` as DLLs de runtime do
+compilador (`libgcc_s_seh-1.dll`, `libstdc++-6.dll` e `libwinpthread-1.dll`),
+além de `assets/`. A `SDL2.dll` continua vindo do SDK do SDL2. O zip da release
+inclui todas elas, então o jogo roda em PCs sem o MinGW instalado.
+
 ### Controles
 
 | Tecla | Ação |
