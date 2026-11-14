@@ -42,6 +42,11 @@ inline constexpr int MORTO_HALF = 11;
 inline constexpr int MELD_MIN = 3;
 inline constexpr int CANASTRA_LEN = 7;
 
+// A meld stores ranks in slots 1..15 (slot 15 is the extra position above the
+// run where wildcards can land).  Index 0 is unused so the slot number always
+// matches the rank it represents.
+inline constexpr int MELD_SLOTS = 15;
+
 struct Card {
     uint8_t id = 0;    // 1..108 as stored by the original; 0 = empty
     uint8_t rank = 0;  // 1..13, 15 for jokers
@@ -86,8 +91,8 @@ int cardWidth(const Card& c);
 struct Meld {
     uint8_t suit = 0;                  // 0 = unused meld slot
     bool dirty = false;                // a wildcard substitutes for a real card
-    std::array<Card, 16> slot{};       // index 1..15
-    std::array<bool, 16> wild{};       // this slot is filled by a wildcard
+    std::array<Card, MELD_SLOTS + 1> slot{};  // index 1..MELD_SLOTS
+    std::array<bool, MELD_SLOTS + 1> wild{};  // this slot is filled by a wildcard
 
     bool empty() const { return suit == 0; }
     void clear() { *this = Meld{}; }

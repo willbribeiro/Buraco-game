@@ -60,11 +60,17 @@ TEST_CASE("checkInvariants reports an invalid card id") {
 }
 
 TEST_CASE("checkInvariants reports a hole inside a meld") {
+    // Build the broken meld in memory: loadFrom now rejects holes itself.
     Game g;
-    const std::string text = saveHeader(int(Phase::Play)) + playerLine(0, {13}) +
-                             "melds 0 1\n" +
-                             meldLine(0, DIAMONDS, {{1, 1}, {3, 3}});
-    REQUIRE(loadText(g, text, "report_hole.sav"));
+    g.newMatch("Ana", 5u);
+    g.player(0).hand.clear();
+    g.player(1).hand.clear();
+    Meld broken;
+    broken.suit = DIAMONDS;
+    broken.slot[1] = makeCard(1);
+    broken.slot[3] = makeCard(3);
+    g.player(0).melds.push_back(broken);
+
     std::string err;
     CHECK(!report::checkInvariants(g, err));
     CHECK_EQ(err, std::string("meld with a hole"));

@@ -16,11 +16,10 @@ namespace buraco::net {
 // Initialises the platform socket layer.  Safe to call more than once.
 bool init(std::string* err = nullptr);
 
-// Releases the platform socket layer (mainly for symmetry; the process exit
-// also cleans it up).
-void shutdown();
-
 enum class IoStatus { Ok, Timeout, Closed, Error };
+
+// Length prefix of every frame, in bytes.
+inline constexpr std::size_t kFrameHeaderSize = 4;
 
 // Largest accepted frame.  Game snapshots/actions are tiny; the cap keeps a
 // corrupt peer from asking for a huge allocation.
@@ -63,11 +62,10 @@ public:
 
     std::uint16_t localPort(std::string* err = nullptr) const;
 
-    // Socket-level timeouts, honoured by sendAll/recvAll.  A timeout in the
-    // middle of a frame leaves the stream unsynchronised, so callers should
-    // treat that as fatal for the connection.
+    // Socket-level timeout, honoured by recvAll.  A timeout in the middle of a
+    // frame leaves the stream unsynchronised, so callers should treat that as
+    // fatal for the connection.
     void setRecvTimeout(int ms);
-    void setSendTimeout(int ms);
 
     IoStatus sendAll(const void* data, std::size_t size, std::string* err = nullptr);
     IoStatus recvAll(void* data, std::size_t size, std::string* err = nullptr);

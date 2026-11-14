@@ -57,7 +57,7 @@ std::string strictLine(const buraco::Game& g) {
         for (const buraco::Meld& m : g.player(seat).melds) {
             std::snprintf(buf, sizeof buf, " [s%u d%d", unsigned(m.suit), m.dirty ? 1 : 0);
             s += buf;
-            for (int i = 1; i <= 15; ++i) {
+            for (int i = 1; i <= buraco::MELD_SLOTS; ++i) {
                 if (!m.slot[i].valid()) continue;
                 std::snprintf(buf, sizeof buf, " %d=%u%s", i, unsigned(m.slot[i].id),
                               m.wild[i] ? "w" : "");

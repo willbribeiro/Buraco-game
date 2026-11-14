@@ -66,14 +66,14 @@ int cardWidth(const Card& c) { return c.rank == 10 ? 3 : 2; }
 
 int Meld::size() const {
     int n = 0;
-    for (int i = 1; i <= 15; ++i)
+    for (int i = 1; i <= MELD_SLOTS; ++i)
         if (slot[i].valid()) ++n;
     return n;
 }
 
 int Meld::points() const {
     int sum = 0;
-    for (int i = 1; i <= 15; ++i)
+    for (int i = 1; i <= MELD_SLOTS; ++i)
         if (slot[i].valid()) sum += cardPoints(slot[i]);
     return sum;
 }
@@ -83,12 +83,12 @@ bool Meld::realCanastra() const {
 
     // Slots 1..13 must hold A,2,3,...,K of the meld suit.  For slot 2 that
     // means a natural 2 of the suit even though 2s are wildcards elsewhere.
-    for (int i = 1; i <= 13; ++i) {
+    for (int i = 1; i <= KING; ++i) {
         const Card& c = slot[i];
         if (!c.valid() || c.suit != suit || c.rank != uint8_t(i)) return false;
     }
     // Nothing may sit above the king (an ace-high copy or a wildcard).
-    for (int i = 14; i <= 15; ++i)
+    for (int i = KING + 1; i <= MELD_SLOTS; ++i)
         if (slot[i].valid()) return false;
     return true;
 }
@@ -103,20 +103,20 @@ int Meld::value() const {
 }
 
 int Meld::lowSlot() const {
-    for (int i = 1; i <= 15; ++i)
+    for (int i = 1; i <= MELD_SLOTS; ++i)
         if (slot[i].valid()) return i;
     return 0;
 }
 
 int Meld::highSlot() const {
-    for (int i = 15; i >= 1; --i)
+    for (int i = MELD_SLOTS; i >= 1; --i)
         if (slot[i].valid()) return i;
     return 0;
 }
 
 std::vector<Card> Meld::cards() const {
     std::vector<Card> out;
-    for (int i = 1; i <= 15; ++i)
+    for (int i = 1; i <= MELD_SLOTS; ++i)
         if (slot[i].valid()) out.push_back(slot[i]);
     return out;
 }
@@ -245,7 +245,7 @@ bool place(const std::vector<Card>& selection, uint8_t suit, Meld& out) {
         out.wild[target] = true;
     }
 
-    for (int i = 1; i <= 15; ++i)
+    for (int i = 1; i <= MELD_SLOTS; ++i)
         if (out.slot[i].valid() && out.wild[i]) out.dirty = true;
 
     // The run must be contiguous.

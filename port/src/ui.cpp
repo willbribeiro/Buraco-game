@@ -17,6 +17,9 @@ using buraco::Card;
 using buraco::Game;
 using buraco::Meld;
 
+// The table fan only needs to suggest the pile; older cards can scroll away.
+constexpr int kMaxTableCardsShown = 26;
+
 inline void put(dos::Video& v, int col, int row, uint8_t ch, uint8_t attr) {
     if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
     const int o = (row * COLS + col) * 2;
@@ -109,7 +112,7 @@ inline void drawMeldLine(dos::Video& v, const Meld& m, int col, int row, int max
     put(v, x++, row, uint8_t(buraco::suitGlyphFor(m.suit)), FIELD);
     put(v, x++, row, ' ', FIELD);
     const bool real = m.realCanastra();
-    for (int slot = 1; slot <= 15; ++slot) {
+    for (int slot = 1; slot <= buraco::MELD_SLOTS; ++slot) {
         const Card& c = m.slot[slot];
         if (!c.valid()) continue;
         if (x + 4 > maxCol) {
@@ -141,15 +144,15 @@ inline void drawPiles(dos::Video& v, const Game& g) {
     // Discard pile ("a mesa"): the original fans every card left to right.
     const auto& pile = g.discardPile();
     if (!pile.empty()) {
-        const int maxCards = 26;
-        std::vector<Card> shown(pile.end() - std::min<size_t>(pile.size(), maxCards), pile.end());
+        std::vector<Card> shown(
+            pile.end() - std::min<size_t>(pile.size(), kMaxTableCardsShown), pile.end());
         drawFan(v, shown, COL_MESA, ROW_PILE, true, 70, nullptr);
     }
 }
 
 inline void drawMelds(dos::Video& v, const Game& g, const UiState& ui) {
     const int col[2] = {COL_MELD_L, COL_MELD_R};
-    const int maxCol[2] = {37, 78};
+    const int maxCol[2] = {37, COL_LAST};
     const int rows = ROW_RULE3 - ROW_MELD;
     for (int seat = 0; seat < 2; ++seat) {
         // The viewed seat always sits on the left under "SEUS JOGOS", so a
@@ -158,9 +161,7 @@ inline void drawMelds(dos::Video& v, const Game& g, const UiState& ui) {
         const int slot = mine ? 0 : 1;
         const int x = col[slot];
         const auto& melds = g.player(seat).melds;
-        int total = 0;
-        for (const Meld& m : melds)
-            if (!m.empty()) ++total;
+        const int total = g.meldCount(seat);
         const int start = std::clamp(ui.meldScroll, 0, std::max(0, total - rows));
 
         if (total > rows) {
@@ -228,14 +229,14 @@ inline void drawHand(dos::Video& v, const Game& g, const UiState& ui) {
         first = cur;
         while (first > 0) {
             const int w = buraco::cardWidth(p.hand[first - 1]);
-            if (used + w > 78) break;
+            if (used + w > COL_LAST) break;
             used += w;
             --first;
         }
         last = cur;
         while (last < int(p.hand.size()) - 1) {
             const int w = buraco::cardWidth(p.hand[last + 1]);
-            if (used + w > 78) break;
+            if (used + w > COL_LAST) break;
             used += w;
             ++last;
         }
@@ -254,7 +255,7 @@ inline void drawHand(dos::Video& v, const Game& g, const UiState& ui) {
         selPtr = &visibleSel;
     }
 
-    FanResult fan = drawFan(v, visible, 1, ROW_HAND, faceUp, 78, selPtr);
+    FanResult fan = drawFan(v, visible, 1, ROW_HAND, faceUp, COL_LAST, selPtr);
 
     if (mine && !p.hand.empty()) {
         const int idx = std::clamp(ui.cursor, 0, int(p.hand.size()) - 1) - first;
@@ -293,7 +294,7 @@ inline std::vector<std::string> wrapText(const std::string& text, int width) {
 inline void drawTextBox(dos::Video& v, const char* title,
                         const std::vector<std::string>& paragraphs) {
     clear(v);
-    const int c0 = 1, c1 = 78, r0 = 1, r1 = 23;
+    const int c0 = 1, c1 = COL_LAST, r0 = 1, r1 = 23;
     drawFrame(v, c0, c1, r0, r1);
 
     int row = r0 + 1;
@@ -410,8 +411,9 @@ inline void drawScoreColumn(dos::Video& v, const Game& g, int seat, int col) {
 
     int handPts = 0;
     for (const Card& c : p.hand) handPts += buraco::cardPoints(c);
-    const int batida = seat == g.lastWentOutSeat() ? 100 : 0;
-    const int morto = p.tookMorto ? 0 : -100;
+    const int batida =
+        seat == g.lastWentOutSeat() ? Game::kBatidaBonus : 0;
+    const int morto = p.tookMorto ? 0 : -Game::kMortoPenalty;
     const int total = meldTotal + batida - handPts + morto;
 
     puts(v, col, 18, i18n::text(i18n::Text::ScoreMelds), FIELD);
@@ -673,7 +675,7 @@ void draw(dos::Video& v, const Game& g, const UiState& ui) {
 void drawOptions(dos::Video& v, const config::Settings& settings,
                  int selectedRow) {
     clear(v);
-    drawFrame(v, 1, 78, 1, 23);
+    drawFrame(v, 1, COL_LAST, 1, 23);
     puts(v, 0, 0, i18n::text(i18n::Text::OptionsTitle), DIM);
 
     static const int kRows[options::kRowCount] = {3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14};

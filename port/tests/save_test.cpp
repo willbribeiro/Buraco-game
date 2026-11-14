@@ -59,6 +59,19 @@ TEST_CASE("sanitizeName protects Windows device names") {
     CHECK_EQ(sanitizeName("CONSOLE"), std::string("CONSOLE"));
 }
 
+TEST_CASE("sanitizeName protects device names that carry an extension") {
+    CHECK_EQ(sanitizeName("CON.txt"), std::string("CON_.txt"));
+    CHECK_EQ(sanitizeName("com1.log"), std::string("com1_.log"));
+    CHECK_EQ(sanitizeName("NUL.tar.gz"), std::string("NUL_.tar.gz"));
+    CHECK_EQ(sanitizeName("LPT9.sav"), std::string("LPT9_.sav"));
+    // Windows ignores trailing spaces and dots before the extension.
+    CHECK_EQ(sanitizeName("CON."), std::string("CON_"));
+    CHECK_EQ(sanitizeName("CON .txt"), std::string("CON _.txt"));
+    // Only the reserved forms are renamed.
+    CHECK_EQ(sanitizeName("CONSOLE.txt"), std::string("CONSOLE.txt"));
+    CHECK_EQ(sanitizeName("COM0.txt"), std::string("COM0.txt"));
+}
+
 TEST_CASE("sanitizeName caps the length at 60") {
     const std::string longName(80, 'a');
     const std::string out = sanitizeName(longName);

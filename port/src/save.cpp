@@ -8,6 +8,28 @@
 
 namespace save {
 namespace fs = std::filesystem;
+namespace {
+
+constexpr std::size_t kMaxSaveNameLength = 60;
+constexpr int kMaxSaveCopies = 100000;
+
+// Windows reserves CON, NUL, COM1..COM9 and LPT1..LPT9 even when they carry an
+// extension ("CON.txt" still opens the console device).  Trailing spaces and
+// dots are ignored by the filesystem, so strip them before comparing.
+bool reservedDeviceName(const std::string& upper) {
+    std::string stem = upper;
+    while (!stem.empty() && (stem.back() == ' ' || stem.back() == '.'))
+        stem.pop_back();
+
+    static const char* kReserved[] = {"CON", "PRN", "AUX", "NUL"};
+    for (const char* r : kReserved)
+        if (stem == r) return true;
+    return stem.size() == 4 &&
+           (stem.rfind("COM", 0) == 0 || stem.rfind("LPT", 0) == 0) &&
+           stem[3] >= '1' && stem[3] <= '9';
+}
+
+}  // namespace
 
 std::string& path() {
     static std::string p = "buraco.sav";
@@ -83,18 +105,17 @@ std::string sanitizeName(const std::string& raw) {
     while (!out.empty() && (out.back() == ' ' || out.back() == '.'))
         out.pop_back();
     if (out.empty()) out = "JOGADOR";
-    if (out.size() > 60) out.resize(60);
+    if (out.size() > kMaxSaveNameLength) out.resize(kMaxSaveNameLength);
 
-    // CON, NUL, COM1... are reserved device names on Windows.
-    std::string upper = out;
+    // Check the part before the first dot so "CON.txt" is renamed too.
+    const std::size_t dot = out.find('.');
+    const std::size_t stemEnd = dot == std::string::npos ? out.size() : dot;
+    std::string upper = out.substr(0, stemEnd);
     for (char& c : upper) c = char(std::toupper(uint8_t(c)));
-    static const char* kReserved[] = {"CON", "PRN", "AUX", "NUL"};
-    for (const char* r : kReserved)
-        if (upper == r) out += '_';
-    if (upper.size() == 4 &&
-        (upper.rfind("COM", 0) == 0 || upper.rfind("LPT", 0) == 0) &&
-        upper[3] >= '1' && upper[3] <= '9')
-        out += '_';
+    if (reservedDeviceName(upper)) {
+        out.insert(stemEnd, 1, '_');
+        if (out.size() > kMaxSaveNameLength) out.resize(kMaxSaveNameLength);
+    }
     return out;
 }
 
@@ -104,7 +125,7 @@ std::string uniquePathForName(const std::string& rawName) {
     std::error_code ec;
     fs::path candidate = folder / (base + ".sav");
     if (!fs::exists(candidate, ec)) return candidate.string();
-    for (int n = 2; n < 100000; ++n) {
+    for (int n = 2; n < kMaxSaveCopies; ++n) {
         candidate = folder / (base + std::to_string(n) + ".sav");
         if (!fs::exists(candidate, ec)) return candidate.string();
     }

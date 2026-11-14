@@ -4,6 +4,13 @@
 #include <cmath>
 
 namespace window_scale {
+namespace {
+
+// Leave a small margin around the window so it never touches the taskbar or
+// the screen edges.
+constexpr double kUsableAreaFraction = 0.90;
+
+}  // namespace
 
 Size clampSize(int width, int height) {
     return Size{std::clamp(width, kMinWidth, kMaxWidth),
@@ -19,8 +26,8 @@ Size fitToUsable(int width, int height, int usableWidth, int usableHeight) {
     Size size = clampSize(width, height);
     if (usableWidth <= 0 || usableHeight <= 0) return size;
 
-    const double maxWidth = double(usableWidth) * 0.90;
-    const double maxHeight = double(usableHeight) * 0.90;
+    const double maxWidth = double(usableWidth) * kUsableAreaFraction;
+    const double maxHeight = double(usableHeight) * kUsableAreaFraction;
     double factor = 1.0;
     if (double(size.width) > maxWidth) factor = std::min(factor, maxWidth / size.width);
     if (double(size.height) > maxHeight) factor = std::min(factor, maxHeight / size.height);

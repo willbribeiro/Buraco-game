@@ -120,11 +120,6 @@ std::string prefixed(const char* what, int code) {
 
 bool init(std::string* err) { return ensureStarted(err); }
 
-void shutdown() {
-    // The platform is cleaned up when the process exits.  Calling
-    // WSACleanup() while other sockets may still be open would be unsafe.
-}
-
 Socket::~Socket() { close(); }
 
 Socket::Socket(Socket&& other) noexcept
@@ -464,19 +459,6 @@ void Socket::setRecvTimeout(int ms) {
 #endif
 }
 
-void Socket::setSendTimeout(int ms) {
-    if (!valid()) return;
-#ifdef _WIN32
-    DWORD value = DWORD(ms < 0 ? 0 : ms);
-    setOption(native(handle_), SOL_SOCKET, SO_SNDTIMEO, &value, sizeof value);
-#else
-    timeval tv{};
-    tv.tv_sec = ms / 1000;
-    tv.tv_usec = (ms % 1000) * 1000;
-    setOption(native(handle_), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
-#endif
-}
-
 IoStatus Socket::sendAll(const void* data, std::size_t size, std::string* err) {
     if (!valid()) {
         if (err) *err = "socket is not connected";
@@ -617,7 +599,7 @@ bool sendMessage(Socket& socket, const std::string& payload, std::string* err) {
         return false;
     }
     const std::uint32_t size = std::uint32_t(payload.size());
-    const unsigned char header[4] = {
+    const unsigned char header[kFrameHeaderSize] = {
         static_cast<unsigned char>((size >> 24) & 0xFF),
         static_cast<unsigned char>((size >> 16) & 0xFF),
         static_cast<unsigned char>((size >> 8) & 0xFF),
@@ -632,7 +614,7 @@ bool sendMessage(Socket& socket, const std::string& payload, std::string* err) {
 
 IoStatus recvMessage(Socket& socket, std::string& payload, std::string* err) {
     payload.clear();
-    unsigned char header[4];
+    unsigned char header[kFrameHeaderSize];
     const IoStatus headerStatus = socket.recvAll(header, sizeof header, err);
     if (headerStatus != IoStatus::Ok) return headerStatus;
 
@@ -671,7 +653,7 @@ IoStatus FrameReader::read(Socket& socket, std::vector<std::string>& messages,
     }
 
     std::size_t offset = 0;
-    while (buffer_.size() - offset >= 4) {
+    while (buffer_.size() - offset >= kFrameHeaderSize) {
         const unsigned char* header =
             reinterpret_cast<const unsigned char*>(buffer_.data() + offset);
         const std::uint32_t size = (std::uint32_t(header[0]) << 24) |
@@ -684,9 +666,9 @@ IoStatus FrameReader::read(Socket& socket, std::vector<std::string>& messages,
             socket.close();
             return IoStatus::Error;
         }
-        if (buffer_.size() - offset < std::size_t(size) + 4) break;
-        messages.emplace_back(buffer_, offset + 4, size);
-        offset += std::size_t(size) + 4;
+        if (buffer_.size() - offset < std::size_t(size) + kFrameHeaderSize) break;
+        messages.emplace_back(buffer_, offset + kFrameHeaderSize, size);
+        offset += std::size_t(size) + kFrameHeaderSize;
     }
     if (offset > 0) buffer_.erase(0, offset);
 

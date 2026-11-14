@@ -213,10 +213,31 @@ TEST_CASE("layMeld kNewMeld and the fifteen-meld limit") {
     CHECK(g.layMeld({makeCard(1), makeCard(2), makeCard(3)}, Game::kNewMeld).empty());
     REQUIRE(g.player(0).melds.size() == 1);
 
+    // Fifteen distinct three-card runs.  They must not reuse the hand cards
+    // (1, 2, 3 and 13) or each other, because loadFrom rejects duplicate
+    // physical cards.
     std::ostringstream full;
     full << saveHeader(int(Phase::Play)) << player0Hand({1, 2, 3, 13}) << "melds 0 15\n";
-    for (int i = 0; i < 15; ++i)
-        full << meldLine(0, DIAMONDS, {{1, 1}, {2, 2}, {3, 3}});
+    int made = 0;
+    for (int deck = 0; deck < 2 && made < 15; ++deck) {
+        for (int suit = 1; suit <= 4 && made < 15; ++suit) {
+            for (int rank = 3; rank <= 9 && made < 15; rank += 3) {
+                const int base = deck * 54 + (suit - 1) * 13;
+                const int id0 = base + rank;
+                const int id1 = base + rank + 1;
+                const int id2 = base + rank + 2;
+                if (id0 <= 3 || id1 <= 3 || id2 <= 3 || id0 == 13 || id1 == 13 ||
+                    id2 == 13)
+                    continue;
+                full << meldLine(0, uint8_t(suit),
+                                 {{rank, uint8_t(id0)},
+                                  {rank + 1, uint8_t(id1)},
+                                  {rank + 2, uint8_t(id2)}});
+                ++made;
+            }
+        }
+    }
+    REQUIRE(made == 15);
     REQUIRE(loadText(g, full.str(), "lay_full.sav"));
     REQUIRE(g.player(0).melds.size() == size_t(15));
     CHECK_EQ(g.layMeld({makeCard(1), makeCard(2), makeCard(3)}, Game::kNewMeld),
@@ -474,6 +495,86 @@ TEST_CASE("loadFrom validates ranges and counts") {
     CHECK(!loadText(g, badMeldCount, "bad_melds.sav"));
     std::string missingMeld = "BURACO-SAVE 1\nhand 1\nmelds 0 1\n";
     CHECK(!loadText(g, missingMeld, "missing_meld.sav"));
+}
+
+TEST_CASE("loadFrom rejects duplicate physical cards") {
+    Game g;
+
+    const std::string hand = saveHeader() + playerLine(0, {1, 1});
+    CHECK(!loadText(g, hand, "dup_hand.sav"));
+
+    const std::string handMeld = saveHeader(int(Phase::Play)) + playerLine(0, {1}) +
+                                 "melds 0 1\n" +
+                                 meldLine(0, DIAMONDS, {{1, 1}, {2, 2}, {3, 3}});
+    CHECK(!loadText(g, handMeld, "dup_hand_meld.sav"));
+
+    const std::string twoPiles = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                                 pileLine("monte", {1}) + pileLine("mesa", {1});
+    CHECK(!loadText(g, twoPiles, "dup_piles.sav"));
+
+    const std::string twoMelds = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                                 "melds 0 2\n" +
+                                 meldLine(0, DIAMONDS, {{1, 1}, {2, 2}, {3, 3}}) +
+                                 meldLine(0, DIAMONDS, {{1, 1}, {2, 2}, {3, 3}});
+    CHECK(!loadText(g, twoMelds, "dup_melds.sav"));
+}
+
+TEST_CASE("loadFrom rejects malformed melds") {
+    Game g;
+
+    const std::string shortMeld = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                                  "melds 0 1\n" +
+                                  meldLine(0, DIAMONDS, {{1, 1}, {3, 3}});
+    CHECK(!loadText(g, shortMeld, "short_meld.sav"));
+
+    const std::string hole = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                             "melds 0 1\n" +
+                             meldLine(0, DIAMONDS, {{1, 1}, {3, 3}, {5, 5}});
+    CHECK(!loadText(g, hole, "hole_meld.sav"));
+
+    const std::string empty = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                              "melds 0 1\n" + meldLine(0, DIAMONDS, {});
+    CHECK(!loadText(g, empty, "empty_meld.sav"));
+
+    const std::string wrongSuit = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                                  "melds 0 1\n" +
+                                  meldLine(0, JOKER, {{1, 1}, {2, 2}, {3, 3}});
+    CHECK(!loadText(g, wrongSuit, "suit_meld.sav"));
+
+    const std::string badWild = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                                "melds 0 1\n" +
+                                meldLine(0, DIAMONDS, {{1, 1}, {2, 2}, {3, 3}}, {1});
+    CHECK(!loadText(g, badWild, "wild_meld.sav"));
+
+    const std::string badDirty = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                                 "melds 0 1\n" +
+                                 meldLine(0, DIAMONDS, {{1, 1}, {2, 2}, {3, 3}}, {2}, false);
+    CHECK(!loadText(g, badDirty, "dirty_meld.sav"));
+
+    // A wild flag may not point at an empty slot, and `dirty` may not be set
+    // without a wildcard.
+    const std::string emptyWild = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                                  "melds 0 1\n" +
+                                  meldLine(0, DIAMONDS, {{1, 1}, {2, 2}, {3, 3}}, {4});
+    CHECK(!loadText(g, emptyWild, "empty_wild_meld.sav"));
+
+    const std::string dirtyNoWild = saveHeader(int(Phase::Play)) + playerLine(0, {}) +
+                                    "melds 0 1\n" +
+                                    meldLine(0, DIAMONDS, {{1, 1}, {2, 2}, {3, 3}}, {}, true);
+    CHECK(!loadText(g, dirtyNoWild, "dirty_no_wild_meld.sav"));
+}
+
+TEST_CASE("loadFrom rejects malformed numeric fields") {
+    Game g;
+
+    CHECK(!loadText(g, saveHeader() + "rng\n", "missing_rng.sav"));
+    CHECK(!loadText(g, saveHeader() + "rng 7 extra\n", "extra_rng.sav"));
+    CHECK(!loadText(g, saveHeader() + "timer nan\n", "nan_timer.sav"));
+    CHECK(!loadText(g, saveHeader() + "wentout 2 0\n", "bad_wentout_seat.sav"));
+    CHECK(!loadText(g, saveHeader() + "wentout 0 2\n", "bad_wentout_flag.sav"));
+    CHECK(!loadText(g, saveHeader() + "stats 1 1 1\n", "bad_stats.sav"));
+    CHECK(!loadText(g, saveHeader() + "player 0 2 0 0 0 0\n", "bad_took.sav"));
+    CHECK(!loadText(g, saveHeader() + "player 0 1 2 0 0 0\n", "bad_out.sav"));
 }
 
 TEST_CASE("the prompt enum is persisted") {

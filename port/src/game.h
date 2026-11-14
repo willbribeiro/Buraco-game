@@ -169,6 +169,10 @@ public:
 
     int targetScore() const { return kTargetScore; }
 
+    // Flat scoring values shared by endHand() and the score screen.
+    static constexpr int kBatidaBonus = 100;
+    static constexpr int kMortoPenalty = 100;
+
     static constexpr int kNewMeld = -2;   // layMeld target: force a new meld
 
 private:

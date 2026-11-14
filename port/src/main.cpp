@@ -42,6 +42,19 @@
 #include <string>
 #include <vector>
 
+namespace {
+
+constexpr uint32_t kBatchSeed = 1234u;
+constexpr std::size_t kMaxPlayerNameLength = 40;
+constexpr std::size_t kMaxAddressLength = 64;
+constexpr int kHeadlessAiGuard = 40;
+constexpr double kHeadlessAiStepSeconds = 0.75;
+constexpr int kSaveTestExtraSteps = 400;
+constexpr std::size_t kRecentStateLimit = 256;
+constexpr std::size_t kDiffContext = 60;
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // Scripted key names (used by the headless regression mode).
 // ---------------------------------------------------------------------------
@@ -237,7 +250,7 @@ int main(int argc, char** argv) {
     bool displayInfo = false;
     bool audioTest = false;
     bool twoPlayers = false;
-    std::uint16_t onlinePort = 7777;
+    std::uint16_t onlinePort = ui::kDefaultOnlinePort;
     std::optional<int> cliScale;
     std::optional<bool> cliFullscreen;
     std::optional<bool> cliIntegerScale;
@@ -401,7 +414,7 @@ int main(int argc, char** argv) {
     // Starts a fresh match.  Hot-seat uses two local humans and names supplied
     // by the new-game flow; solo keeps the historical {Human, AI} pair.
     auto startMatch = [&](const std::string& name1, const std::string& name2) {
-        const uint32_t matchSeed = seed ? seed : (batch ? 1234u : makeSeed());
+        const uint32_t matchSeed = seed ? seed : (batch ? kBatchSeed : makeSeed());
         if (twoPlayers) {
             const std::string p1 =
                 name1.empty() ? i18n::text(i18n::Text::DefaultPlayer1) : name1;
@@ -871,7 +884,8 @@ int main(int argc, char** argv) {
                     ui.screen = flowMode ? Screen::Intro : Screen::ModeSelect;
                 }
             } else if (batch && sym >= 32 && sym < 127) {
-                if (ui.inputName.size() < 40) ui.inputName += char(sym);
+                if (ui.inputName.size() < kMaxPlayerNameLength)
+                    ui.inputName += char(sym);
             }
             return;
         }
@@ -1207,7 +1221,7 @@ int main(int argc, char** argv) {
         };
 
         buraco::Game a;
-        a.newMatch(i18n::text(i18n::Text::DefaultPlayer), seed ? seed : 1234u);
+        a.newMatch(i18n::text(i18n::Text::DefaultPlayer), seed ? seed : kBatchSeed);
         advance(a, saveTestSteps);
         const std::string before = report::strictLine(a);
         bool ok = a.saveTo(save::path());
@@ -1233,18 +1247,19 @@ int main(int argc, char** argv) {
         }
 
         if (ok) {
-            advance(a, 400);
-            advance(b, 400);
+            advance(a, kSaveTestExtraSteps);
+            advance(b, kSaveTestExtraSteps);
             const std::string la = report::strictLine(a);
             const std::string lb = report::strictLine(b);
             if (la != lb) {
                 ok = false;
-                detail = "diverged after 400 more steps";
+                detail = "diverged after " + std::to_string(kSaveTestExtraSteps) +
+                         " more steps";
                 // Point at the first visible difference; the two states are
                 // saved next to the report so the split can be reproduced.
                 size_t d = 0;
                 while (d < la.size() && d < lb.size() && la[d] == lb[d]) ++d;
-                const size_t from = d > 60 ? d - 60 : 0;
+                const size_t from = d > kDiffContext ? d - kDiffContext : 0;
                 std::fprintf(out, "first diff at column %zu\n", d);
                 std::fprintf(out, "A ...%s\n", la.c_str() + from);
                 std::fprintf(out, "B ...%s\n", lb.c_str() + from);
@@ -1306,7 +1321,7 @@ int main(int argc, char** argv) {
                 return 2;
             }
             recent.push_back(h);
-            if (recent.size() > 256) recent.pop_front();
+            if (recent.size() > kRecentStateLimit) recent.pop_front();
         }
         std::fprintf(out, "OK steps=%d hands=%d p0=%d p1=%d\n", steps, hands,
                      game.player(0).total, game.player(1).total);
@@ -1377,11 +1392,11 @@ int main(int argc, char** argv) {
             key(k);
 
             // Let the AI play until the turn comes back to a human.
-            for (int guard = 0; guard < 40; ++guard) {
+            for (int guard = 0; guard < kHeadlessAiGuard; ++guard) {
                 using buraco::Phase;
                 if (game.phase() == Phase::HandOver || game.phase() == Phase::MatchOver) break;
                 if (game.isHuman(game.current())) break;
-                game.update(0.75);
+                game.update(kHeadlessAiStepSeconds);
             }
             if (started && game.isHuman(game.current()) &&
                 int(ui.selected.size()) != int(game.player(ui.viewSeat).hand.size()))
@@ -1495,14 +1510,14 @@ int main(int argc, char** argv) {
                 if (ui.screen == ui::UiState::Screen::NameEntry) {
                     for (const char* p = e.text.text; *p; ++p) {
                         const unsigned char c = static_cast<unsigned char>(*p);
-                        if (c >= 32 && c != 127 && ui.inputName.size() < 40)
+                        if (c >= 32 && c != 127 && ui.inputName.size() < kMaxPlayerNameLength)
                             ui.inputName += char(c);
                     }
                 } else if (ui.screen == ui::UiState::Screen::OnlineJoin &&
                            !onlineActive) {
                     for (const char* p = e.text.text; *p; ++p) {
                         const unsigned char c = static_cast<unsigned char>(*p);
-                        if (c >= 32 && c != 127 && ui.inputAddress.size() < 64)
+                        if (c >= 32 && c != 127 && ui.inputAddress.size() < kMaxAddressLength)
                             ui.inputAddress += char(c);
                     }
                 }

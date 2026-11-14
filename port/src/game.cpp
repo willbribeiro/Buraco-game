@@ -12,11 +12,12 @@ namespace {
 // in --auto/--check, and the oldest ones are irrelevant by then.
 constexpr size_t kMaxSoundEvents = 64;
 
-bool hasCanastra(const PlayerState& p) {
-    for (const Meld& m : p.melds)
-        if (!m.empty() && m.canastra()) return true;
-    return false;
-}
+// Seconds the AI waits between phases; keeps its moves readable on screen.
+constexpr double kAiDelaySeconds = 0.7;
+
+// Passes over the hand while the AI lays new melds and grows existing ones.
+constexpr int kAiNewMeldPasses = 8;
+constexpr int kAiGrowPasses = 12;
 
 int canastraCount(const PlayerState& p) {
     int n = 0;
@@ -24,6 +25,8 @@ int canastraCount(const PlayerState& p) {
         if (!m.empty() && m.canastra()) ++n;
     return n;
 }
+
+bool hasCanastra(const PlayerState& p) { return canastraCount(p) > 0; }
 
 void removeCard(std::vector<Card>& hand, const Card& c) {
     for (auto it = hand.begin(); it != hand.end(); ++it) {
@@ -362,9 +365,8 @@ void Game::endHand() {
     morto_.clear();
 
     const int bonusSeat = lastWentOutSeat_;
-    // Batida is a flat +100 for whoever went out, whether by laying every card
-    // as a meld or by discarding the last one.
-    const int bonus = 100;
+    // Batida is a flat bonus for whoever went out, whether by laying every
+    // card as a meld or by discarding the last one.
 
     for (int seat = 0; seat < 2; ++seat) {
         PlayerState& p = players_[seat];
@@ -372,9 +374,9 @@ void Game::endHand() {
         for (const Meld& m : p.melds) pts += m.value();
         int handPts = 0;
         for (const Card& c : p.hand) handPts += cardPoints(c);
-        if (!p.tookMorto) handPts += 100;  // "perdeu 100 pontos pelo morto"
+        if (!p.tookMorto) handPts += kMortoPenalty;  // "perdeu pontos pelo morto"
         pts -= handPts;
-        if (seat == bonusSeat) pts += bonus;
+        if (seat == bonusSeat) pts += kBatidaBonus;
         p.lastHandPoints = pts;
         p.total += pts;
     }
@@ -415,7 +417,7 @@ void Game::update(double dt) {
     if (!isAi(current_)) return;
 
     timer_ += dt;
-    if (timer_ < 0.7) return;
+    if (timer_ < kAiDelaySeconds) return;
     autoStep();
 }
 
@@ -612,14 +614,14 @@ bool Game::aiLayMelds() {
         }
     }
 
-    for (int guard = 0; guard < 8; ++guard) {
+    for (int guard = 0; guard < kAiNewMeldPasses; ++guard) {
         std::vector<Card> meld = aiFindMeld();
         if (meld.empty()) break;
         if (!layMeld(meld).empty()) break;
         laid = true;
     }
     // Try to grow existing melds with single cards.
-    for (int guard = 0; guard < 12; ++guard) {
+    for (int guard = 0; guard < kAiGrowPasses; ++guard) {
         bool grew = false;
         for (Meld& m : me.melds) {
             if (m.empty()) continue;

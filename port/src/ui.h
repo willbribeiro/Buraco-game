@@ -27,6 +27,7 @@ constexpr int ROW_RULE2 = 7;
 constexpr int ROW_RULE3 = 15;
 constexpr int ROW_RULE4 = 24;
 constexpr int COL_SPLIT = 39;
+constexpr int COL_LAST = COLS - 2;  // right edge of the framed content
 constexpr int ROW_PILE = 2;
 constexpr int COL_MORTO = 1;
 constexpr int COL_MESA = 11;
@@ -36,6 +37,8 @@ constexpr int ROW_HAND = 19;
 constexpr int ROW_MELD = 9;
 constexpr int COL_MELD_L = 1;
 constexpr int COL_MELD_R = 41;
+
+inline constexpr std::uint16_t kDefaultOnlinePort = 7777;
 
 struct UiState {
     // Screens shown before the actual game starts.  Headless/batch modes keep
@@ -83,7 +86,7 @@ struct UiState {
     // chooses host/join.  Status and error strings are filled by main.cpp.
     bool online = false;       // the NameEntry screen belongs to the online flow
     int onlineChoice = 0;      // OnlineMenu: 0 = host, 1 = join
-    int onlinePort = 7777;     // displayed on the host/join screens
+    int onlinePort = kDefaultOnlinePort;  // displayed on the host/join screens
     std::string inputAddress = "127.0.0.1";
     std::string onlineStatus;
     std::string onlineError;

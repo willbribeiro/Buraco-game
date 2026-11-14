@@ -43,7 +43,6 @@ struct SessionEvents {
     bool connected = false;     // handshake reached the peer
     bool started = false;       // client received START (host sets it directly)
     bool disconnected = false;  // a connected peer went away
-    bool desync = false;        // reserved for the caller (fingerprint check)
     std::vector<Action> actions;  // host: client requests; client: relayed actions
     std::string fingerprint;      // latest FP received (client)
     std::string error;            // fatal setup error or remote ERR text

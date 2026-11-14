@@ -52,20 +52,20 @@ inline std::string playerLine(int seat, const std::vector<uint8_t>& hand, bool t
 inline std::string meldLine(int seat, uint8_t suit,
                             const std::vector<std::pair<int, uint8_t>>& slots,
                             const std::vector<int>& wild = {}, bool dirty = false) {
-    std::vector<uint8_t> ids(16, 0);
-    std::vector<int> flags(16, 0);
+    std::vector<uint8_t> ids(buraco::MELD_SLOTS + 1, 0);
+    std::vector<int> flags(buraco::MELD_SLOTS + 1, 0);
     for (const auto& [slot, id] : slots) {
-        if (slot < 1 || slot > 15) continue;
+        if (slot < 1 || slot > buraco::MELD_SLOTS) continue;
         ids[slot] = id;
     }
     for (int slot : wild) {
-        if (slot < 1 || slot > 15) continue;
+        if (slot < 1 || slot > buraco::MELD_SLOTS) continue;
         flags[slot] = 1;
     }
     std::ostringstream out;
     out << "meld " << seat << ' ' << int(suit) << ' ' << (dirty ? 1 : 0);
-    for (int i = 1; i <= 15; ++i) out << ' ' << int(ids[i]);
-    for (int i = 1; i <= 15; ++i) out << ' ' << flags[i];
+    for (int i = 1; i <= buraco::MELD_SLOTS; ++i) out << ' ' << int(ids[i]);
+    for (int i = 1; i <= buraco::MELD_SLOTS; ++i) out << ' ' << flags[i];
     out << '\n';
     return out.str();
 }
@@ -105,7 +105,7 @@ inline std::string snapshot(const buraco::Game& g) {
         out << " melds=";
         for (const buraco::Meld& m : p.melds) {
             out << '[' << int(m.suit) << ',' << int(m.dirty);
-            for (int i = 1; i <= 15; ++i) {
+            for (int i = 1; i <= buraco::MELD_SLOTS; ++i) {
                 out << ',' << int(m.slot[i].id) << ':' << int(m.wild[i]);
             }
             out << ']';

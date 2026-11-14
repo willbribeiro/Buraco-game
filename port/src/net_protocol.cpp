@@ -10,6 +10,9 @@ namespace buraco::net {
 namespace {
 
 constexpr const char* kMagic = "BURACO-NET";
+constexpr std::size_t kMaxSeedDigits = 10;
+constexpr std::size_t kFingerprintHexLength = 16;
+constexpr std::size_t kMaxErrorMessage = 120;
 
 std::string envelope(const std::string& body) {
     return std::string(kMagic) + " " + std::to_string(kProtocolVersion) + " " +
@@ -105,7 +108,7 @@ bool parseStart(const std::string& message, std::uint32_t& seed,
         return fail(err, i18n::text(i18n::Text::ProtoExpectedStart));
     std::string token;
     if (!(in >> token)) return fail(err, i18n::text(i18n::Text::ProtoMissingSeed));
-    if (token.size() > 10)
+    if (token.size() > kMaxSeedDigits)
         return fail(err, i18n::text(i18n::Text::ProtoInvalidSeed));
     for (char c : token)
         if (c < '0' || c > '9')
@@ -131,7 +134,7 @@ bool parseFingerprint(const std::string& message, std::string& text,
     if (!(in >> tag) || tag != "FP")
         return fail(err, i18n::text(i18n::Text::ProtoExpectedFingerprint));
     std::string token;
-    if (!(in >> token) || token.size() != 16)
+    if (!(in >> token) || token.size() != kFingerprintHexLength)
         return fail(err, i18n::text(i18n::Text::ProtoInvalidFingerprint));
     for (char& c : token) {
         if (c >= 'A' && c <= 'F') c = char(c - 'A' + 'a');
@@ -148,7 +151,7 @@ std::string makeError(const std::string& text) {
     for (char c : text) {
         if (c == '\r' || c == '\n') continue;
         clean += c;
-        if (clean.size() == 120) break;
+        if (clean.size() == kMaxErrorMessage) break;
     }
     return envelope("ERR " + clean);
 }
@@ -163,7 +166,8 @@ bool parseError(const std::string& message, std::string& text,
         return fail(err, i18n::text(i18n::Text::ProtoExpectedErr));
     std::getline(in, text);
     if (!text.empty() && text.front() == ' ') text.erase(text.begin());
-    if (text.size() > 120) return fail(err, i18n::text(i18n::Text::ProtoErrTooLong));
+    if (text.size() > kMaxErrorMessage)
+        return fail(err, i18n::text(i18n::Text::ProtoErrTooLong));
     return true;
 }
 
@@ -341,7 +345,8 @@ std::uint64_t fingerprint(const Game& game) {
 
 std::string fingerprintText(const Game& game) {
     std::ostringstream out;
-    out << std::hex << std::setw(16) << std::setfill('0') << fingerprint(game);
+    out << std::hex << std::setw(int(kFingerprintHexLength)) << std::setfill('0')
+        << fingerprint(game);
     return out.str();
 }
 

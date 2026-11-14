@@ -11,6 +11,12 @@ using Clock = std::chrono::steady_clock;
 
 constexpr auto kHandshakeTimeout = std::chrono::seconds(10);
 
+// Let a few frames queue while the peer is slow, and compact the consumed
+// prefix once it grows past this many bytes.
+constexpr std::size_t kMaxQueuedFrames = 4;
+constexpr std::size_t kMaxOutboxBytes = kMaxQueuedFrames * std::size_t(kMaxFrame);
+constexpr std::size_t kOutboxCompactThreshold = 8192;
+
 std::string cleanError(const std::string& text) {
     return text.empty() ? std::string(i18n::text(i18n::Text::NetFailure)) : text;
 }
@@ -98,7 +104,8 @@ bool Session::queueMessage(const std::string& payload) {
         return false;
     }
     // Keep a slow peer from making the process grow without bound.
-    if (outbox_.size() - outOffset_ + payload.size() + 4 > 4 * std::size_t(kMaxFrame)) {
+    if (outbox_.size() - outOffset_ + payload.size() + kFrameHeaderSize >
+        kMaxOutboxBytes) {
         error_ = i18n::text(i18n::Text::NetSendQueueFull);
         return false;
     }
@@ -137,7 +144,7 @@ bool Session::flush(std::string* err) {
     if (outOffset_ == outbox_.size()) {
         outbox_.clear();
         outOffset_ = 0;
-    } else if (outOffset_ > 8192) {
+    } else if (outOffset_ > kOutboxCompactThreshold) {
         outbox_.erase(0, outOffset_);
         outOffset_ = 0;
     }
