@@ -450,7 +450,7 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 ## 8. Validação
 
-* `ctest --test-dir build` roda os 179 casos de teste (cartas, máquina de
+* `ctest --test-dir build` roda os 183 casos de teste (cartas, máquina de
   turnos, save/load, nomes de arquivo, controladores e hot-seat, rede TCP,
   protocolo, sessão host/cliente e partidas online em lockstep, invariantes,
   tela, configuração de vídeo/som/idioma, cálculo e estado da janela, tela de
@@ -498,8 +498,9 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
   esses testes de loopback.
 * Capturas do porte: `shots/50_port_melds.png`, `shots/52_port_melds.png`,
   `shots/60_port_score.png` (tela de contagem detalhada).
-* O zip `buraco-1.5.1-windows-x86_64.zip` foi extraído em uma pasta limpa e
+* O zip `buraco-1.5.2-windows-x86_64.zip` foi extraído em uma pasta limpa e
   executado sem o MinGW no `PATH`: `--auto 4000 --seed 777` deu o hash
-  `78FB74EA…` e `--check` terminou com `OK`. O pacote leva as três DLLs de
+  `78FB74EA…`, `--check 20000 --seed 777` terminou com `OK` e `--savetest 900`
+  fechou com `OK`. O pacote leva as três DLLs de
   runtime do compilador ao lado do `buraco.exe`, e o `objdump -p` confirma que
   todas as importações não-sistêmicas estão presentes no zip.
