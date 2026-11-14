@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include "cards.h"
+#include "i18n.h"
 #include "options.h"
 
 #include <algorithm>
@@ -163,13 +164,17 @@ inline void drawMelds(dos::Video& v, const Game& g, const UiState& ui) {
         const int start = std::clamp(ui.meldScroll, 0, std::max(0, total - rows));
 
         if (total > rows) {
-            char header[40];
-            std::snprintf(header, sizeof header, "%s %d-%d/%d",
-                          mine ? "SEUS JOGOS" : "MEUS JOGOS", start + 1,
-                          std::min(total, start + rows), total);
+            const std::string header =
+                std::string(i18n::text(mine ? i18n::Text::MeldsYours
+                                            : i18n::Text::MeldsMine)) +
+                " " + std::to_string(start + 1) + "-" +
+                std::to_string(std::min(total, start + rows)) + "/" +
+                std::to_string(total);
             puts(v, x, ROW_RULE2 + 1, header, DIM);
         } else {
-            puts(v, x, ROW_RULE2 + 1, mine ? "SEUS JOGOS" : "MEUS JOGOS", DIM);
+            puts(v, x, ROW_RULE2 + 1,
+                 i18n::text(mine ? i18n::Text::MeldsYours : i18n::Text::MeldsMine),
+                 DIM);
         }
 
         int row = ROW_MELD;
@@ -180,7 +185,7 @@ inline void drawMelds(dos::Video& v, const Game& g, const UiState& ui) {
             ++row;
             ++shown;
         }
-        if (total == 0) puts(v, x, ROW_MELD, "nenhum jogo", DIM);
+        if (total == 0) puts(v, x, ROW_MELD, i18n::text(i18n::Text::MeldsNone), DIM);
     }
     // Scores between the two headers so they never sit on top of a meld line.
     char buf[64];
@@ -198,13 +203,14 @@ inline void drawHand(dos::Video& v, const Game& g, const UiState& ui) {
     const int seat = scoring ? ui.viewSeat : g.current();
     const auto& p = g.player(seat);
     const bool mine = seat == ui.viewSeat;
-    puts(v, 1, ROW_LABEL, mine ? "Sua mao." : "Minha mao.", FIELD);
+    puts(v, 1, ROW_LABEL,
+         i18n::text(mine ? i18n::Text::HandMine : i18n::Text::HandOther), FIELD);
 
-    char buf[64];
     int pts = 0;
     for (const Card& c : p.hand) pts += buraco::cardPoints(c);
-    std::snprintf(buf, sizeof buf, "cartas: %2d   pontos: %3d", int(p.hand.size()), pts);
-    puts(v, 50, ROW_LABEL, buf, DIM);
+    const std::string info =
+        i18n::format(i18n::Text::HandInfo, int(p.hand.size()), pts);
+    puts(v, 50, ROW_LABEL, info, DIM);
 
     // Never reveal the opponent's cards: the AI hand is only ever drawn from
     // the back.  (PageUp used to toggle a peek, which made it too easy to see
@@ -304,37 +310,26 @@ inline void drawTextBox(dos::Video& v, const char* title,
 
 // F3: the general situation, exactly in the wording of the original game.
 inline void drawStatus(dos::Video& v, const Game& g) {
-    char buf[256];
     std::vector<std::string> lines;
-    lines.push_back("A situacao do jogo ate aqui:");
+    lines.push_back(i18n::text(i18n::Text::StatusIntro));
     lines.push_back(g.player(0).name + ",");
-    // CP437 0xA0 is the accented 'a' used by the original text ("já").
-    std::snprintf(buf, sizeof buf,
-                  "nos j%c %d partidas das quais voce ganhou %d e eu ganhou %d.",
-                  char(0xA0), g.handsPlayed(), g.wins(0), g.wins(1));
-    lines.push_back(buf);
-    std::snprintf(buf, sizeof buf,
-                  "Na ultima partida voce fez %d, e eu fiz %d.",
-                  g.player(0).lastHandPoints, g.player(1).lastHandPoints);
-    lines.push_back(buf);
-    std::snprintf(buf, sizeof buf,
-                  "Ate agora voce ja fez %d pontos e eu fiz %d.",
-                  g.player(0).total, g.player(1).total);
-    lines.push_back(buf);
-    lines.push_back("Estamos no meio de uma partida.");
-    std::snprintf(buf, sizeof buf, "Voce tem %d cartas na mao, e eu tenho %d.",
-                  int(g.player(0).hand.size()), int(g.player(1).hand.size()));
-    lines.push_back(buf);
-    std::snprintf(buf, sizeof buf, "Voce ja baixou %d jogos e eu %d.",
-                  g.meldCount(0), g.meldCount(1));
-    lines.push_back(buf);
-    std::snprintf(buf, sizeof buf, "Na mesa ha %d cartas.",
-                  int(g.discardPile().size()));
-    lines.push_back(buf);
-    std::snprintf(buf, sizeof buf, "No monte ha %d cartas.", int(g.monte().size()));
-    lines.push_back(buf);
-    lines.push_back("...agora aperte ENTER");
-    drawTextBox(v, "BURACO - situacao geral", lines);
+    // The translation table keeps CP437 0xA0 in the Portuguese text ("já").
+    lines.push_back(i18n::format(i18n::Text::StatusMatches, g.handsPlayed(), g.wins(0),
+                                 g.wins(1)));
+    lines.push_back(i18n::format(i18n::Text::StatusLastHand,
+                                 g.player(0).lastHandPoints, g.player(1).lastHandPoints));
+    lines.push_back(i18n::format(i18n::Text::StatusTotals, g.player(0).total,
+                                 g.player(1).total));
+    lines.push_back(i18n::text(i18n::Text::StatusMidHand));
+    lines.push_back(i18n::format(i18n::Text::StatusCards, int(g.player(0).hand.size()),
+                                 int(g.player(1).hand.size())));
+    lines.push_back(
+        i18n::format(i18n::Text::StatusMelds, g.meldCount(0), g.meldCount(1)));
+    lines.push_back(
+        i18n::format(i18n::Text::StatusTable, int(g.discardPile().size())));
+    lines.push_back(i18n::format(i18n::Text::StatusStock, int(g.monte().size())));
+    lines.push_back(i18n::text(i18n::Text::PressEnter));
+    drawTextBox(v, i18n::text(i18n::Text::StatusTitle), lines);
 }
 
 // Compact name for a meld slot (1..13, plus the ace-high slot 14).
@@ -386,11 +381,10 @@ inline void scoreNumber(dos::Video& v, int col, int row, int value, bool plus,
 
 inline void drawScoreColumn(dos::Video& v, const Game& g, int seat, int col) {
     const auto& p = g.player(seat);
-    char buf[80];
 
     puts(v, col, 2, p.name, FIELD);
-    std::snprintf(buf, sizeof buf, "acum %d", p.total);
-    puts(v, col + 36 - int(std::strlen(buf)), 2, buf, DIM);
+    const std::string accum = i18n::format(i18n::Text::ScoreAccum, p.total);
+    puts(v, col + 36 - int(accum.size()), 2, accum, DIM);
 
     int row = 3;
     int meldTotal = 0;
@@ -401,8 +395,9 @@ inline void drawScoreColumn(dos::Video& v, const Game& g, int seat, int col) {
         const int pts = m.value();
         meldTotal += pts;
 
-        std::snprintf(buf, sizeof buf, "Jogo %2d %s", shown, meldRange(m).c_str());
-        puts(v, col, row, buf, FIELD);
+        const std::string line =
+            i18n::format(i18n::Text::ScoreMeldLine, shown, meldRange(m).c_str());
+        puts(v, col, row, line, FIELD);
         const char* tag = meldBonusTag(m);
         if (*tag) {
             const bool dirty = m.dirty && !m.realCanastra();
@@ -411,7 +406,7 @@ inline void drawScoreColumn(dos::Video& v, const Game& g, int seat, int col) {
         scoreNumber(v, col, row, pts, false, FIELD);
         ++row;
     }
-    if (shown == 0) puts(v, col, row, "(nenhum jogo)", DIM);
+    if (shown == 0) puts(v, col, row, i18n::text(i18n::Text::ScoreNoMelds), DIM);
 
     int handPts = 0;
     for (const Card& c : p.hand) handPts += buraco::cardPoints(c);
@@ -419,15 +414,15 @@ inline void drawScoreColumn(dos::Video& v, const Game& g, int seat, int col) {
     const int morto = p.tookMorto ? 0 : -100;
     const int total = meldTotal + batida - handPts + morto;
 
-    puts(v, col, 18, "Jogos", FIELD);
+    puts(v, col, 18, i18n::text(i18n::Text::ScoreMelds), FIELD);
     scoreNumber(v, col, 18, meldTotal, false, FIELD);
-    puts(v, col, 19, "Batida", batida ? FIELD : DIM);
+    puts(v, col, 19, i18n::text(i18n::Text::ScoreBatida), batida ? FIELD : DIM);
     scoreNumber(v, col, 19, batida, true, batida ? FIELD : DIM);
-    puts(v, col, 20, "Cartas na mao", FIELD);
+    puts(v, col, 20, i18n::text(i18n::Text::ScoreHandCards), FIELD);
     scoreNumber(v, col, 20, -handPts, false, FIELD);
-    puts(v, col, 21, "Morto", morto ? FIELD : DIM);
+    puts(v, col, 21, i18n::text(i18n::Text::ScoreMorto), morto ? FIELD : DIM);
     scoreNumber(v, col, 21, morto, false, morto ? FIELD : DIM);
-    puts(v, col, 22, "Total da mao", FIELD);
+    puts(v, col, 22, i18n::text(i18n::Text::ScoreHandTotal), FIELD);
     scoreNumber(v, col, 22, total, false, FIELD);
 }
 
@@ -439,69 +434,66 @@ inline void drawHandOver(dos::Video& v, const Game& g) {
     drawFrame(v, 0, COLS - 1, r0, r1);
     for (int r = r0 + 1; r < r1; ++r) put(v, 39, r, 0xBA, FIELD);
 
-    char buf[80];
-    std::snprintf(buf, sizeof buf, "CONTAGEM DE PONTOS   mao %d", g.handNumber());
-    puts(v, 2, 0, buf, FIELD);
+    const std::string title = i18n::format(i18n::Text::ScoreTitle, g.handNumber());
+    puts(v, 2, 0, title, FIELD);
 
     drawScoreColumn(v, g, 0, 2);
     drawScoreColumn(v, g, 1, 41);
 
-    puts(v, 2, ROWS - 1, "ENTER para continuar", WILD);
+    puts(v, 2, ROWS - 1, i18n::text(i18n::Text::ScoreContinue), WILD);
 }
 
 // The text of the initial screen, also shown by F1.  Each entry is one
 // paragraph; drawTextBox wraps them to the width of the panel.
 inline void drawHelp(dos::Video& v) {
-    static const char* kLines[] = {
-        "Vamos jogar buraco ?",
-        "",
-        "Durante o jogo, voce pode responder minhas perguntas com \"S\" ou \"N\".",
-        "As flechas para esquerda e direita servem para escolher as suas cartas.",
-        "Quando voce tiver escolhido, aperte a barra de espacos para que eu saiba "
-        "qual carta voce escolheu. Se voce nao quizer mais esta carta, aperte a "
-        "barra novamente. Para baixar um jogo, escolha algumas cartas e no fim "
-        "aperte ENTER. Para descartar, aperte ENTER sem ter escolhido nenhuma "
-        "carta.",
-        "As flechas para cima e para baixo mostram os jogos que estao na mesa.",
-        "Para ver esta tela, aperte F1.",
-        "Para gravar o jogo e continuar depois, aperte F2.",
-        "Para ver a situacao geral do jogo, aperte F3.",
-        "Boa sorte!",
-        "",
-        "...agora aperte ENTER",
+    static const i18n::Text kLines[] = {
+        i18n::Text::HelpIntro,
+        i18n::Text::Empty,
+        i18n::Text::HelpRules,
+        i18n::Text::HelpArrows,
+        i18n::Text::HelpScroll,
+        i18n::Text::HelpMelds,
+        i18n::Text::HelpF1,
+        i18n::Text::HelpF2,
+        i18n::Text::HelpF3,
+        i18n::Text::HelpOptions,
+        i18n::Text::HelpLuck,
+        i18n::Text::Empty,
+        i18n::Text::PressEnter,
     };
     std::vector<std::string> paragraphs;
-    for (const char* line : kLines) paragraphs.emplace_back(line);
-    drawTextBox(v, "BURACO - ajuda", paragraphs);
+    for (i18n::Text line : kLines) paragraphs.emplace_back(i18n::text(line));
+    drawTextBox(v, i18n::text(i18n::Text::HelpTitle), paragraphs);
 }
 
 // Asked right after the intro when a save file was found in the game folder.
 inline void drawContinuePrompt(dos::Video& v, const std::string& saveFile,
                                const std::string& playerName) {
     std::vector<std::string> lines;
-    lines.push_back("Encontrei um jogo gravado:");
+    lines.push_back(i18n::text(i18n::Text::ContinueFound));
     lines.push_back(saveFile);
-    if (!playerName.empty()) lines.push_back("Jogador: " + playerName);
+    if (!playerName.empty())
+        lines.push_back(i18n::format(i18n::Text::ContinuePlayer, playerName.c_str()));
     lines.push_back("");
-    lines.push_back("Continuar o jogo (S) ou criar um novo (N)?");
-    drawTextBox(v, "BURACO - jogo gravado", lines);
+    lines.push_back(i18n::text(i18n::Text::ContinueQuestion));
+    drawTextBox(v, i18n::text(i18n::Text::ContinueTitle), lines);
 }
 
 // New game: one local player against the AI, two local players (hot-seat) or
 // an online match against another computer on the LAN.
 inline void drawModeSelect(dos::Video& v, int choice) {
     std::vector<std::string> lines;
-    lines.push_back("Quantos jogadores?");
+    lines.push_back(i18n::text(i18n::Text::ModeQuestion));
     lines.push_back("");
     lines.push_back(std::string(choice == 0 ? "> " : "  ") +
-                    "1 jogador  (voce contra a IA)");
+                    i18n::text(i18n::Text::ModeOne));
     lines.push_back(std::string(choice == 1 ? "> " : "  ") +
-                    "2 jogadores  (hot-seat, mesma maquina)");
+                    i18n::text(i18n::Text::ModeTwo));
     lines.push_back(std::string(choice == 2 ? "> " : "  ") +
-                    "3 online  (dois computadores na mesma rede)");
+                    i18n::text(i18n::Text::ModeOnline));
     lines.push_back("");
-    lines.push_back("Setas ou 1/2/3 escolhem.  ENTER confirma.  ESC volta.");
-    drawTextBox(v, "BURACO - novo jogo", lines);
+    lines.push_back(i18n::text(i18n::Text::ModeHint));
+    drawTextBox(v, i18n::text(i18n::Text::ModeTitle), lines);
 }
 
 // Asked for a new game: the typed name becomes the save file name.  In
@@ -512,72 +504,73 @@ inline void drawNameEntry(dos::Video& v, const std::string& input,
                           bool online) {
     std::vector<std::string> lines;
     if (online)
-        lines.push_back("Nome para a partida online?");
+        lines.push_back(i18n::text(i18n::Text::NameOnlinePrompt));
     else if (twoPlayers)
-        lines.push_back(seat == 0 ? "Nome do JOGADOR 1?" : "Nome do JOGADOR 2?");
+        lines.push_back(i18n::text(seat == 0 ? i18n::Text::NamePlayer1Prompt
+                                             : i18n::Text::NamePlayer2Prompt));
     else
-        lines.push_back("Qual o seu nome?");
+        lines.push_back(i18n::text(i18n::Text::NameSoloPrompt));
     lines.push_back("");
     lines.push_back("> " + input + "_");
     lines.push_back("");
     if (online) {
-        lines.push_back("ENTER em branco usa JOGADOR.");
-        lines.push_back("O nome aparece para o outro jogador.");
-        lines.push_back("ENTER confirma.  ESC volta a tela inicial.");
+        lines.push_back(i18n::text(i18n::Text::NameOnlineBlank));
+        lines.push_back(i18n::text(i18n::Text::NameOnlineShare));
+        lines.push_back(i18n::text(i18n::Text::NameConfirm));
     } else if (twoPlayers) {
-        lines.push_back(seat == 0 ? "ENTER em branco usa JOGADOR 1."
-                                  : "ENTER em branco usa JOGADOR 2.");
-        lines.push_back("O save usa os dois nomes.  ESC volta a tela inicial.");
+        lines.push_back(i18n::text(seat == 0 ? i18n::Text::NameHotseatBlank1
+                                             : i18n::Text::NameHotseatBlank2));
+        lines.push_back(i18n::text(i18n::Text::NameHotseatSave));
     } else {
-        lines.push_back("O nome digitado sera o nome do arquivo de progresso.");
-        lines.push_back("ENTER confirma.  ESC volta a tela inicial.");
+        lines.push_back(i18n::text(i18n::Text::NameSoloSave));
+        lines.push_back(i18n::text(i18n::Text::NameConfirm));
     }
     if (!error.empty()) {
         lines.push_back("");
         lines.push_back(error);
     }
-    drawTextBox(v, "BURACO - novo jogo", lines);
+    drawTextBox(v, i18n::text(i18n::Text::ModeTitle), lines);
 }
 
 inline void drawOnlineMenu(dos::Video& v, int choice) {
     std::vector<std::string> lines;
-    lines.push_back("Jogar com outro computador na rede local.");
+    lines.push_back(i18n::text(i18n::Text::OnlineIntro));
     lines.push_back("");
     lines.push_back(std::string(choice == 0 ? "> " : "  ") +
-                    "Criar partida  (host)");
+                    i18n::text(i18n::Text::OnlineHostChoice));
     lines.push_back(std::string(choice == 1 ? "> " : "  ") +
-                    "Entrar em partida  (cliente)");
+                    i18n::text(i18n::Text::OnlineJoinChoice));
     lines.push_back("");
-    lines.push_back("O host precisa liberar a porta no firewall.");
-    lines.push_back("Setas escolhem.  ENTER confirma.  ESC volta.");
-    drawTextBox(v, "BURACO - online", lines);
+    lines.push_back(i18n::text(i18n::Text::OnlineFirewall));
+    lines.push_back(i18n::text(i18n::Text::OnlineMenuHint));
+    drawTextBox(v, i18n::text(i18n::Text::OnlineTitle), lines);
 }
 
 inline void drawOnlineHost(dos::Video& v, int port, const std::string& status,
                            const std::string& error) {
     std::vector<std::string> lines;
-    lines.push_back("Criar partida online");
+    lines.push_back(i18n::text(i18n::Text::OnlineHostTitle));
     lines.push_back("");
-    lines.push_back("Porta: " + std::to_string(port));
-    lines.push_back(status.empty() ? "Aguardando conexao..." : status);
+    lines.push_back(i18n::format(i18n::Text::OnlinePort, port));
+    lines.push_back(status.empty() ? i18n::text(i18n::Text::OnlineWaiting) : status);
     lines.push_back("");
-    lines.push_back("No outro computador, escolha \"Entrar em partida\"");
-    lines.push_back("e digite o IP desta maquina.");
+    lines.push_back(i18n::text(i18n::Text::OnlineHostStep1));
+    lines.push_back(i18n::text(i18n::Text::OnlineHostStep2));
     lines.push_back("");
     if (!error.empty()) {
         lines.push_back(error);
         lines.push_back("");
     }
-    lines.push_back("ESC cancela.");
-    drawTextBox(v, "BURACO - online", lines);
+    lines.push_back(i18n::text(i18n::Text::OnlineCancel));
+    drawTextBox(v, i18n::text(i18n::Text::OnlineTitle), lines);
 }
 
 inline void drawOnlineJoin(dos::Video& v, const std::string& address,
                            const std::string& status, const std::string& error) {
     std::vector<std::string> lines;
-    lines.push_back("Entrar em partida online");
+    lines.push_back(i18n::text(i18n::Text::OnlineJoinTitle));
     lines.push_back("");
-    lines.push_back("Endereco do host:");
+    lines.push_back(i18n::text(i18n::Text::OnlineHostAddress));
     lines.push_back("> " + address + "_");
     lines.push_back("");
     lines.push_back(status);
@@ -586,8 +579,8 @@ inline void drawOnlineJoin(dos::Video& v, const std::string& address,
         lines.push_back(error);
     }
     lines.push_back("");
-    lines.push_back("ENTER conecta.  ESC cancela.");
-    drawTextBox(v, "BURACO - online", lines);
+    lines.push_back(i18n::text(i18n::Text::OnlineJoinHint));
+    drawTextBox(v, i18n::text(i18n::Text::OnlineTitle), lines);
 }
 
 }  // namespace
@@ -597,12 +590,12 @@ inline void drawOnlineJoin(dos::Video& v, const std::string& address,
 inline void drawSeatSwitch(dos::Video& v, const Game& g) {
     std::vector<std::string> lines;
     const std::string& raw = g.player(g.current()).name;
-    const std::string name = raw.empty() ? "JOGADOR" : raw;
-    lines.push_back("Passe o controle para " + name + ".");
-    lines.push_back("Nao mostre a mao para o outro jogador.");
+    const std::string name = raw.empty() ? i18n::text(i18n::Text::DefaultPlayer) : raw;
+    lines.push_back(i18n::format(i18n::Text::SeatSwitchPass, name.c_str()));
+    lines.push_back(i18n::text(i18n::Text::SeatSwitchHide));
     lines.push_back("");
-    lines.push_back("...agora aperte ENTER");
-    drawTextBox(v, "BURACO - troca de jogador", lines);
+    lines.push_back(i18n::text(i18n::Text::PressEnter));
+    drawTextBox(v, i18n::text(i18n::Text::SeatSwitchTitle), lines);
 }
 
 void draw(dos::Video& v, const Game& g, const UiState& ui) {
@@ -653,7 +646,8 @@ void draw(dos::Video& v, const Game& g, const UiState& ui) {
         // whose turn it is.  Clip the message so the HUD never sits on it.
         const std::string& raw = g.player(g.current()).name;
         const std::string hud =
-            "VEZ: " + (raw.empty() ? std::string("JOGADOR") : raw);
+            std::string(i18n::text(i18n::Text::HudTurn)) +
+            (raw.empty() ? i18n::text(i18n::Text::DefaultPlayer) : raw);
         std::string msg = g.message();
         if (hud.size() < size_t(COLS)) {
             const size_t room = size_t(COLS) - hud.size() - 1;
@@ -680,9 +674,9 @@ void drawOptions(dos::Video& v, const config::Settings& settings,
                  int selectedRow) {
     clear(v);
     drawFrame(v, 1, 78, 1, 23);
-    puts(v, 0, 0, "BURACO - opcoes", DIM);
+    puts(v, 0, 0, i18n::text(i18n::Text::OptionsTitle), DIM);
 
-    static const int kRows[options::kRowCount] = {3, 4, 5, 6, 7, 9, 10, 12, 13, 14};
+    static const int kRows[options::kRowCount] = {3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14};
     for (int i = 0; i < options::kRowCount; ++i) {
         const options::Row row = static_cast<options::Row>(i);
         const bool selected = i == selectedRow;
@@ -693,13 +687,13 @@ void drawOptions(dos::Video& v, const config::Settings& settings,
         if (!text.empty()) puts(v, 27, kRows[i], text, attr);
     }
 
-    puts(v, 3, 16, "Setas cima/baixo escolhem; esquerda/direita alteram.", DIM);
-    puts(v, 3, 17, "ENTER aplica.  F9 ou ESC fecha esta tela.", DIM);
-    puts(v, 3, 18, "Video e som sao gravados no buraco.cfg ao sair.", DIM);
-    puts(v, 3, 20, "1x..8x = 640x400 vezes a escala.  Auto usa o tamanho salvo", DIM);
-    puts(v, 3, 21, "e reduz para 90% da area util.  Volume em passos de 10%.", DIM);
+    puts(v, 3, 16, i18n::text(i18n::Text::OptionsHint1), DIM);
+    puts(v, 3, 17, i18n::text(i18n::Text::OptionsHint2), DIM);
+    puts(v, 3, 18, i18n::text(i18n::Text::OptionsHint3), DIM);
+    puts(v, 3, 20, i18n::text(i18n::Text::OptionsHint4), DIM);
+    puts(v, 3, 21, i18n::text(i18n::Text::OptionsHint5), DIM);
     if (settings.display.integerScale)
-        puts(v, 3, 22, "Modo inteiro: a imagem pode cair para 1x em telas pequenas.", WILD);
+        puts(v, 3, 22, i18n::text(i18n::Text::OptionsIntegerNote), WILD);
 }
 
 }  // namespace ui

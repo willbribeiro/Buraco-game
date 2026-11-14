@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <sstream>
 
+#include "i18n.h"
 #include "report.h"
 
 namespace buraco::net {
@@ -23,13 +24,15 @@ bool fail(std::string* err, const std::string& why) {
 bool stripEnvelope(const std::string& message, std::string& rest,
                    std::string* err) {
     if (message.find_first_of("\r\n") != std::string::npos)
-        return fail(err, "mensagem com quebra de linha");
+        return fail(err, i18n::text(i18n::Text::ProtoLineBreak));
     std::istringstream in(message);
     std::string magic;
     int version = 0;
-    if (!(in >> magic >> version)) return fail(err, "mensagem curta");
-    if (magic != kMagic) return fail(err, "protocolo desconhecido");
-    if (version != kProtocolVersion) return fail(err, "versao incompativel");
+    if (!(in >> magic >> version))
+        return fail(err, i18n::text(i18n::Text::ProtoShortMessage));
+    if (magic != kMagic) return fail(err, i18n::text(i18n::Text::ProtoUnknown));
+    if (version != kProtocolVersion)
+        return fail(err, i18n::text(i18n::Text::ProtoVersion));
     std::getline(in, rest);
     if (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
     return true;
@@ -37,7 +40,7 @@ bool stripEnvelope(const std::string& message, std::string& rest,
 
 bool noExtra(std::istringstream& in, std::string* err) {
     std::string extra;
-    if (in >> extra) return fail(err, "argumentos extras");
+    if (in >> extra) return fail(err, i18n::text(i18n::Text::ProtoExtraArgs));
     return true;
 }
 
@@ -60,10 +63,12 @@ bool parseHello(const std::string& message, std::string& name,
     if (!stripEnvelope(message, rest, err)) return false;
     std::istringstream in(rest);
     std::string tag;
-    if (!(in >> tag) || tag != "HELLO") return fail(err, "esperava HELLO");
+    if (!(in >> tag) || tag != "HELLO")
+        return fail(err, i18n::text(i18n::Text::ProtoExpectedHello));
     std::getline(in, name);
     if (!name.empty() && name.front() == ' ') name.erase(name.begin());
-    if (name.size() > kMaxNameLength) return fail(err, "nome longo demais");
+    if (name.size() > kMaxNameLength)
+        return fail(err, i18n::text(i18n::Text::ProtoNameTooLong));
     return true;
 }
 
@@ -77,9 +82,10 @@ bool parseSeat(const std::string& message, int& seat, std::string* err) {
     std::istringstream in(rest);
     std::string tag;
     int value = 0;
-    if (!(in >> tag) || tag != "SEAT") return fail(err, "esperava SEAT");
+    if (!(in >> tag) || tag != "SEAT")
+        return fail(err, i18n::text(i18n::Text::ProtoExpectedSeat));
     if (!(in >> value) || (value != 0 && value != 1))
-        return fail(err, "assento invalido");
+        return fail(err, i18n::text(i18n::Text::ProtoInvalidSeat));
     if (!noExtra(in, err)) return false;
     seat = value;
     return true;
@@ -95,15 +101,19 @@ bool parseStart(const std::string& message, std::uint32_t& seed,
     if (!stripEnvelope(message, rest, err)) return false;
     std::istringstream in(rest);
     std::string tag;
-    if (!(in >> tag) || tag != "START") return fail(err, "esperava START");
+    if (!(in >> tag) || tag != "START")
+        return fail(err, i18n::text(i18n::Text::ProtoExpectedStart));
     std::string token;
-    if (!(in >> token)) return fail(err, "semente ausente");
-    if (token.size() > 10) return fail(err, "semente invalida");
+    if (!(in >> token)) return fail(err, i18n::text(i18n::Text::ProtoMissingSeed));
+    if (token.size() > 10)
+        return fail(err, i18n::text(i18n::Text::ProtoInvalidSeed));
     for (char c : token)
-        if (c < '0' || c > '9') return fail(err, "semente invalida");
+        if (c < '0' || c > '9')
+            return fail(err, i18n::text(i18n::Text::ProtoInvalidSeed));
     if (!noExtra(in, err)) return false;
     const unsigned long long value = std::stoull(token);
-    if (value > 0xFFFFFFFFull) return fail(err, "semente invalida");
+    if (value > 0xFFFFFFFFull)
+        return fail(err, i18n::text(i18n::Text::ProtoInvalidSeed));
     seed = std::uint32_t(value);
     return true;
 }
@@ -118,14 +128,15 @@ bool parseFingerprint(const std::string& message, std::string& text,
     if (!stripEnvelope(message, rest, err)) return false;
     std::istringstream in(rest);
     std::string tag;
-    if (!(in >> tag) || tag != "FP") return fail(err, "esperava FP");
+    if (!(in >> tag) || tag != "FP")
+        return fail(err, i18n::text(i18n::Text::ProtoExpectedFingerprint));
     std::string token;
     if (!(in >> token) || token.size() != 16)
-        return fail(err, "fingerprint invalido");
+        return fail(err, i18n::text(i18n::Text::ProtoInvalidFingerprint));
     for (char& c : token) {
         if (c >= 'A' && c <= 'F') c = char(c - 'A' + 'a');
         if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
-            return fail(err, "fingerprint invalido");
+            return fail(err, i18n::text(i18n::Text::ProtoInvalidFingerprint));
     }
     if (!noExtra(in, err)) return false;
     text = token;
@@ -148,10 +159,11 @@ bool parseError(const std::string& message, std::string& text,
     if (!stripEnvelope(message, rest, err)) return false;
     std::istringstream in(rest);
     std::string tag;
-    if (!(in >> tag) || tag != "ERR") return fail(err, "esperava ERR");
+    if (!(in >> tag) || tag != "ERR")
+        return fail(err, i18n::text(i18n::Text::ProtoExpectedErr));
     std::getline(in, text);
     if (!text.empty() && text.front() == ' ') text.erase(text.begin());
-    if (text.size() > 120) return fail(err, "erro longo demais");
+    if (text.size() > 120) return fail(err, i18n::text(i18n::Text::ProtoErrTooLong));
     return true;
 }
 
@@ -203,35 +215,39 @@ bool parseAction(const std::string& message, Action& action,
     if (!stripEnvelope(message, rest, err)) return false;
     std::istringstream in(rest);
     std::string tag;
-    if (!(in >> tag) || tag != "ACT") return fail(err, "esperava ACT");
+    if (!(in >> tag) || tag != "ACT")
+        return fail(err, i18n::text(i18n::Text::ProtoExpectedAction));
 
     std::string kind;
-    if (!(in >> kind)) return fail(err, "acao ausente");
+    if (!(in >> kind)) return fail(err, i18n::text(i18n::Text::ProtoMissingAction));
     action = Action{};
 
     if (kind == "draw") {
         std::string source;
-        if (!(in >> source)) return fail(err, "fonte ausente");
+        if (!(in >> source)) return fail(err, i18n::text(i18n::Text::ProtoMissingSource));
         if (source == "stock")
             action.kind = ActionKind::DrawStock;
         else if (source == "table")
             action.kind = ActionKind::DrawTable;
         else
-            return fail(err, "fonte desconhecida");
+            return fail(err, i18n::text(i18n::Text::ProtoUnknownSource));
         return noExtra(in, err);
     }
     if (kind == "lay") {
         int target = 0;
         int count = 0;
-        if (!(in >> target >> count)) return fail(err, "melda incompleta");
-        if (target < -2 || target > 14) return fail(err, "alvo invalido");
-        if (count < 1 || count > DECK_SIZE) return fail(err, "quantidade invalida");
+        if (!(in >> target >> count))
+            return fail(err, i18n::text(i18n::Text::ProtoIncompleteMeld));
+        if (target < -2 || target > 14)
+            return fail(err, i18n::text(i18n::Text::ProtoInvalidTarget));
+        if (count < 1 || count > DECK_SIZE)
+            return fail(err, i18n::text(i18n::Text::ProtoInvalidCount));
         action.kind = ActionKind::LayMeld;
         action.target = target;
         for (int i = 0; i < count; ++i) {
             int id = 0;
             if (!(in >> id) || id < 1 || id > DECK_SIZE)
-                return fail(err, "carta invalida");
+                return fail(err, i18n::text(i18n::Text::ProtoInvalidCard));
             action.cards.push_back(makeCard(std::uint8_t(id)));
         }
         return noExtra(in, err);
@@ -239,7 +255,7 @@ bool parseAction(const std::string& message, Action& action,
     if (kind == "discard") {
         int id = 0;
         if (!(in >> id) || id < 1 || id > DECK_SIZE)
-            return fail(err, "carta invalida");
+            return fail(err, i18n::text(i18n::Text::ProtoInvalidCard));
         action.kind = ActionKind::Discard;
         action.card = makeCard(std::uint8_t(id));
         return noExtra(in, err);
@@ -250,63 +266,68 @@ bool parseAction(const std::string& message, Action& action,
     }
     if (kind == "prompt") {
         std::string answer;
-        if (!(in >> answer)) return fail(err, "resposta ausente");
+        if (!(in >> answer)) return fail(err, i18n::text(i18n::Text::ProtoMissingAnswer));
         if (answer == "yes")
             action.kind = ActionKind::PromptYes;
         else if (answer == "no")
             action.kind = ActionKind::PromptNo;
         else
-            return fail(err, "resposta desconhecida");
+            return fail(err, i18n::text(i18n::Text::ProtoUnknownAnswer));
         return noExtra(in, err);
     }
     if (kind == "continue") {
         action.kind = ActionKind::Continue;
         return noExtra(in, err);
     }
-    return fail(err, "acao desconhecida");
+    return fail(err, i18n::text(i18n::Text::ProtoUnknownAction));
 }
 
 bool apply(Game& game, const Action& action, std::string* err) {
     switch (action.kind) {
         case ActionKind::DrawStock:
             if (game.phase() != Phase::Draw)
-                return fail(err, "nao e a fase de compra");
+                return fail(err, i18n::text(i18n::Text::ProtoNotDrawPhase));
             // An empty stock is not a refusal: draw() still advances to Play
             // (the original ends the hand that way), so this must be relayed.
             game.draw(false);
             return true;
         case ActionKind::DrawTable:
             if (game.phase() != Phase::Draw)
-                return fail(err, "nao e a fase de compra");
-            if (!game.canTakeDiscard()) return fail(err, "mesa vazia");
-            return game.draw(true) || fail(err, "compra recusada");
+                return fail(err, i18n::text(i18n::Text::ProtoNotDrawPhase));
+            if (!game.canTakeDiscard())
+                return fail(err, i18n::text(i18n::Text::ProtoEmptyTable));
+            return game.draw(true) ||
+                   fail(err, i18n::text(i18n::Text::ProtoDrawRefused));
         case ActionKind::LayMeld: {
             const std::string why = game.layMeld(action.cards, action.target);
             if (!why.empty()) return fail(err, why);
             return true;
         }
         case ActionKind::Discard:
-            return game.discardCard(action.card) || fail(err, "descarte recusado");
+            return game.discardCard(action.card) ||
+                   fail(err, i18n::text(i18n::Text::ProtoDiscardRefused));
         case ActionKind::RequestDiscard:
             if (game.phase() != Phase::Play)
-                return fail(err, "nao e a fase de jogo");
+                return fail(err, i18n::text(i18n::Text::ProtoNotPlayPhase));
             game.requestDiscard();
             return true;
         case ActionKind::PromptYes:
-            if (game.prompt() == Prompt::None) return fail(err, "sem pergunta");
+            if (game.prompt() == Prompt::None)
+                return fail(err, i18n::text(i18n::Text::ProtoNoQuestion));
             game.answerPrompt(true);
             return true;
         case ActionKind::PromptNo:
-            if (game.prompt() == Prompt::None) return fail(err, "sem pergunta");
+            if (game.prompt() == Prompt::None)
+                return fail(err, i18n::text(i18n::Text::ProtoNoQuestion));
             game.answerPrompt(false);
             return true;
         case ActionKind::Continue:
             if (game.phase() != Phase::HandOver)
-                return fail(err, "nao e o fim da mao");
+                return fail(err, i18n::text(i18n::Text::ProtoNotHandOver));
             game.continueAfterHand();
             return true;
     }
-    return fail(err, "acao desconhecida");
+    return fail(err, i18n::text(i18n::Text::ProtoUnknownAction));
 }
 
 std::uint64_t fingerprint(const Game& game) {

@@ -43,16 +43,17 @@ bool isAction(Row row) {
 
 std::string label(Row row) {
     switch (row) {
-        case Row::Scale: return "Escala da janela";
-        case Row::Adjustment: return "Ajuste da imagem";
-        case Row::Fullscreen: return "Tela cheia";
-        case Row::Vsync: return "VSync";
-        case Row::Maximized: return "Iniciar maximizada";
-        case Row::Sound: return "Som";
-        case Row::Volume: return "Volume";
-        case Row::Center: return "Centralizar janela";
-        case Row::Reset: return "Restaurar padroes";
-        case Row::Close: return "Voltar ao jogo";
+        case Row::Scale: return i18n::text(i18n::Text::OptionsScale);
+        case Row::Adjustment: return i18n::text(i18n::Text::OptionsAdjustment);
+        case Row::Fullscreen: return i18n::text(i18n::Text::OptionsFullscreen);
+        case Row::Vsync: return i18n::text(i18n::Text::OptionsVsync);
+        case Row::Maximized: return i18n::text(i18n::Text::OptionsMaximized);
+        case Row::Language: return i18n::text(i18n::Text::OptionsLanguage);
+        case Row::Sound: return i18n::text(i18n::Text::OptionsSound);
+        case Row::Volume: return i18n::text(i18n::Text::OptionsVolume);
+        case Row::Center: return i18n::text(i18n::Text::OptionsCenter);
+        case Row::Reset: return i18n::text(i18n::Text::OptionsReset);
+        case Row::Close: return i18n::text(i18n::Text::OptionsClose);
         case Row::Count: break;
     }
     return {};
@@ -63,23 +64,32 @@ std::string value(Row row, const config::Settings& settings) {
         case Row::Scale:
             return scaleText(settings.display);
         case Row::Adjustment:
-            return settings.display.integerScale ? "Inteiro (pixel-perfect)" : "Esticado";
+            return settings.display.integerScale
+                       ? i18n::text(i18n::Text::OptionsInteger)
+                       : i18n::text(i18n::Text::OptionsStretched);
         case Row::Fullscreen:
-            return settings.display.fullscreen ? "Sim" : "Nao";
+            return i18n::text(settings.display.fullscreen ? i18n::Text::Yes
+                                                          : i18n::Text::No);
         case Row::Vsync:
-            return settings.display.vsync ? "Sim" : "Nao";
+            return i18n::text(settings.display.vsync ? i18n::Text::Yes
+                                                     : i18n::Text::No);
         case Row::Maximized:
-            return settings.display.maximized ? "Sim" : "Nao";
+            return i18n::text(settings.display.maximized ? i18n::Text::Yes
+                                                         : i18n::Text::No);
+        case Row::Language:
+            return i18n::displayName(settings.language);
         case Row::Sound:
-            return settings.sound.enabled ? "Sim" : "Nao";
+            return i18n::text(settings.sound.enabled ? i18n::Text::Yes
+                                                     : i18n::Text::No);
         case Row::Volume:
             return std::to_string(settings.sound.volume) + "%";
         case Row::Center:
-            return settings.display.centered ? "Centralizada" : "Livre (ENTER centraliza)";
+            return i18n::text(settings.display.centered ? i18n::Text::OptionsCentered
+                                                        : i18n::Text::OptionsFree);
         case Row::Reset:
-            return "ENTER";
+            return i18n::text(i18n::Text::OptionsEnter);
         case Row::Close:
-            return "ENTER ou ESC";
+            return i18n::text(i18n::Text::OptionsEnterEsc);
         case Row::Count:
             break;
     }
@@ -117,6 +127,9 @@ Action handleKey(State& state, Key key, config::Settings& settings) {
             return Action::Apply;
         case Row::Maximized:
             settings.display.maximized = nextFlag(settings.display.maximized, key);
+            return Action::Apply;
+        case Row::Language:
+            settings.language = i18n::toggled(settings.language);
             return Action::Apply;
         case Row::Sound:
             settings.sound.enabled = nextFlag(settings.sound.enabled, key);

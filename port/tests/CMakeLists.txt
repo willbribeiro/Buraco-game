@@ -11,6 +11,7 @@ add_executable(buraco_tests
     save_test.cpp
     report_test.cpp
     sound_test.cpp
+    i18n_test.cpp
     ui_test.cpp
     window_scale_test.cpp
     window_state_test.cpp)

@@ -84,6 +84,7 @@ bool normalize(Settings& settings) {
     settings.display.windowY =
         std::clamp(settings.display.windowY, kMinPosition, kMaxPosition);
     settings.sound.volume = std::clamp(settings.sound.volume, 0, 100);
+    if (!i18n::valid(settings.language)) settings.language = i18n::Language::Pt;
     return !(settings == before);
 }
 
@@ -169,6 +170,10 @@ bool parse(const std::string& text, Settings& out, std::string* warning) {
         } else if (key == "sound_volume") {
             if (parseInt(value, number)) out.sound.volume = number;
             else { warn(warning, lineNumber, "invalid sound_volume '" + value + "'"); ok = false; }
+        } else if (key == "language") {
+            i18n::Language parsed;
+            if (i18n::parseLanguage(value, parsed)) out.language = parsed;
+            else { warn(warning, lineNumber, "invalid language '" + value + "'"); ok = false; }
         }
         // Unknown keys are intentionally ignored for forward compatibility.
     }
@@ -193,6 +198,7 @@ std::string serialize(const Settings& settings) {
     out << "vsync=" << (settings.display.vsync ? 1 : 0) << '\n';
     out << "sound=" << (settings.sound.enabled ? 1 : 0) << '\n';
     out << "sound_volume=" << settings.sound.volume << '\n';
+    out << "language=" << i18n::code(settings.language) << '\n';
     return out.str();
 }
 

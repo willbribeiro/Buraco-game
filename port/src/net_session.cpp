@@ -1,5 +1,7 @@
 #include "net_session.h"
 
+#include "i18n.h"
+
 #include <utility>
 
 namespace buraco::net {
@@ -10,7 +12,7 @@ using Clock = std::chrono::steady_clock;
 constexpr auto kHandshakeTimeout = std::chrono::seconds(10);
 
 std::string cleanError(const std::string& text) {
-    return text.empty() ? std::string("falha de rede") : text;
+    return text.empty() ? std::string(i18n::text(i18n::Text::NetFailure)) : text;
 }
 
 }  // namespace
@@ -30,7 +32,7 @@ bool Session::host(std::uint16_t port, const std::string& name,
     }
     localPort_ = listener_.localPort();
     if (localPort_ == 0) {
-        if (err) *err = "nao consegui descobrir a porta";
+        if (err) *err = i18n::text(i18n::Text::NetNoPort);
         state_ = SessionState::Error;
         error_ = *err;
         listener_.close();
@@ -39,7 +41,7 @@ bool Session::host(std::uint16_t port, const std::string& name,
 
     role_ = SessionRole::Host;
     state_ = SessionState::Listening;
-    localName_ = name.empty() ? "JOGADOR 1" : name;
+    localName_ = name.empty() ? i18n::text(i18n::Text::DefaultPlayer1) : name;
     hostName_ = localName_;
     clientName_.clear();
     if (err) err->clear();
@@ -62,7 +64,7 @@ bool Session::join(const std::string& address, std::uint16_t port,
 
     role_ = SessionRole::Client;
     state_ = SessionState::Connecting;
-    localName_ = name.empty() ? "JOGADOR 2" : name;
+    localName_ = name.empty() ? i18n::text(i18n::Text::DefaultPlayer2) : name;
     clientName_ = localName_;
     hostName_.clear();
     deadline_ = Clock::now() + kHandshakeTimeout;
@@ -92,12 +94,12 @@ void Session::close() {
 
 bool Session::queueMessage(const std::string& payload) {
     if (payload.size() > kMaxFrame) {
-        error_ = "mensagem grande demais";
+        error_ = i18n::text(i18n::Text::NetMessageTooLarge);
         return false;
     }
     // Keep a slow peer from making the process grow without bound.
     if (outbox_.size() - outOffset_ + payload.size() + 4 > 4 * std::size_t(kMaxFrame)) {
-        error_ = "fila de envio cheia";
+        error_ = i18n::text(i18n::Text::NetSendQueueFull);
         return false;
     }
     const std::uint32_t size = std::uint32_t(payload.size());
@@ -114,7 +116,7 @@ bool Session::queueMessage(const std::string& payload) {
 
 bool Session::flush(std::string* err) {
     if (!peer_.valid()) {
-        if (err) *err = "conexao nao estabelecida";
+        if (err) *err = i18n::text(i18n::Text::NetNoConnection);
         return false;
     }
     while (outOffset_ < outbox_.size()) {
@@ -174,7 +176,7 @@ void Session::failConnection(const std::string& why, SessionEvents& events) {
 void Session::handleMessage(const std::string& message, SessionEvents& events) {
     const std::string tag = tagOf(message);
     if (tag.empty()) {
-        failConnection("mensagem invalida", events);
+        failConnection(i18n::text(i18n::Text::NetInvalidMessage), events);
         return;
     }
     std::string err;
@@ -182,12 +184,14 @@ void Session::handleMessage(const std::string& message, SessionEvents& events) {
     if (tag == "HELLO") {
         std::string name;
         if (!parseHello(message, name, &err)) {
-            failConnection("HELLO invalido: " + err, events);
+            failConnection(i18n::format(i18n::Text::NetInvalidHello, err.c_str()),
+                           events);
             return;
         }
         if (role_ == SessionRole::Host) {
             if (connected_) return;  // duplicate, ignore
-            clientName_ = name.empty() ? "JOGADOR 2" : name;
+            clientName_ =
+                name.empty() ? i18n::text(i18n::Text::DefaultPlayer2) : name;
             hostName_ = localName_;
             connected_ = true;
             state_ = SessionState::Ready;
@@ -198,7 +202,7 @@ void Session::handleMessage(const std::string& message, SessionEvents& events) {
             events.connected = true;
         } else {
             if (helloSeen_) return;
-            hostName_ = name.empty() ? "JOGADOR 1" : name;
+            hostName_ = name.empty() ? i18n::text(i18n::Text::DefaultPlayer1) : name;
             helloSeen_ = true;
             if (seatSeen_ && !connected_) {
                 connected_ = true;
@@ -210,16 +214,17 @@ void Session::handleMessage(const std::string& message, SessionEvents& events) {
 
     if (tag == "SEAT") {
         if (role_ != SessionRole::Client) {
-            failConnection("SEAT inesperado", events);
+            failConnection(i18n::text(i18n::Text::NetUnexpectedSeat), events);
             return;
         }
         int seat = -1;
         if (!parseSeat(message, seat, &err)) {
-            failConnection("SEAT invalido: " + err, events);
+            failConnection(i18n::format(i18n::Text::NetInvalidSeat, err.c_str()),
+                           events);
             return;
         }
         if (seat != 1) {
-            failConnection("assento remoto inesperado", events);
+            failConnection(i18n::text(i18n::Text::NetUnexpectedRemoteSeat), events);
             return;
         }
         seatSeen_ = true;
@@ -232,17 +237,18 @@ void Session::handleMessage(const std::string& message, SessionEvents& events) {
 
     if (tag == "START") {
         if (role_ != SessionRole::Client) {
-            failConnection("START inesperado", events);
+            failConnection(i18n::text(i18n::Text::NetUnexpectedStart), events);
             return;
         }
         if (started_) return;
         std::uint32_t value = 0;
         if (!parseStart(message, value, &err)) {
-            failConnection("START invalido: " + err, events);
+            failConnection(i18n::format(i18n::Text::NetInvalidStart, err.c_str()),
+                           events);
             return;
         }
         if (!seatSeen_) {
-            failConnection("START antes de SEAT", events);
+            failConnection(i18n::text(i18n::Text::NetStartBeforeSeat), events);
             return;
         }
         seed_ = value;
@@ -254,12 +260,13 @@ void Session::handleMessage(const std::string& message, SessionEvents& events) {
 
     if (tag == "ACT") {
         if (!started_) {
-            failConnection("acao antes do inicio", events);
+            failConnection(i18n::text(i18n::Text::NetActionBeforeStart), events);
             return;
         }
         Action action;
         if (!parseAction(message, action, &err)) {
-            failConnection("acao invalida: " + err, events);
+            failConnection(i18n::format(i18n::Text::NetInvalidAction, err.c_str()),
+                           events);
             return;
         }
         events.actions.push_back(std::move(action));
@@ -269,7 +276,8 @@ void Session::handleMessage(const std::string& message, SessionEvents& events) {
     if (tag == "FP") {
         std::string text;
         if (!parseFingerprint(message, text, &err)) {
-            failConnection("fingerprint invalido: " + err, events);
+            failConnection(
+                i18n::format(i18n::Text::NetInvalidFingerprint, err.c_str()), events);
             return;
         }
         events.fingerprint = text;
@@ -279,15 +287,15 @@ void Session::handleMessage(const std::string& message, SessionEvents& events) {
     if (tag == "ERR") {
         std::string text;
         if (!parseError(message, text, &err)) {
-            failConnection("ERR invalido: " + err, events);
+            failConnection(i18n::format(i18n::Text::NetInvalidErr, err.c_str()), events);
             return;
         }
         // A refused action is reported by the host but is not fatal.
-        events.error = text.empty() ? "acao recusada pelo host" : text;
+        events.error = text.empty() ? i18n::text(i18n::Text::NetActionRefused) : text;
         return;
     }
 
-    failConnection("mensagem inesperada: " + tag, events);
+    failConnection(i18n::format(i18n::Text::NetUnexpectedMessage, tag.c_str()), events);
 }
 
 void Session::poll(SessionEvents& events) {
@@ -326,7 +334,7 @@ void Session::poll(SessionEvents& events) {
 
     if (state_ == SessionState::Connecting) {
         if (Clock::now() > deadline_) {
-            failConnection("tempo esgotado ao conectar", events);
+            failConnection(i18n::text(i18n::Text::NetConnectTimeout), events);
             return;
         }
         std::string err;
@@ -350,7 +358,7 @@ void Session::poll(SessionEvents& events) {
     if (state_ != SessionState::Handshake && state_ != SessionState::Ready) return;
     if (state_ == SessionState::Handshake && !connected_ &&
         Clock::now() > deadline_) {
-        failConnection("tempo esgotado no handshake", events);
+        failConnection(i18n::text(i18n::Text::NetHandshakeTimeout), events);
         return;
     }
 
@@ -372,9 +380,10 @@ void Session::poll(SessionEvents& events) {
 
     if (status == IoStatus::Closed) {
         if (wasConnected || connected_) {
-            failConnection("conexao encerrada", events);
+            failConnection(i18n::text(i18n::Text::NetConnectionClosed), events);
         } else {
-            failConnection("conexao encerrada durante o handshake", events);
+            failConnection(i18n::text(i18n::Text::NetConnectionClosedHandshake),
+                           events);
         }
     } else if (status == IoStatus::Error) {
         failConnection(err, events);
@@ -384,7 +393,7 @@ void Session::poll(SessionEvents& events) {
 bool Session::start(std::uint32_t seed, std::string* err) {
     if (role_ != SessionRole::Host || !connected_ ||
         (state_ != SessionState::Ready && state_ != SessionState::Handshake)) {
-        if (err) *err = "sem cliente conectado";
+        if (err) *err = i18n::text(i18n::Text::NetNoClient);
         return false;
     }
     if (started_) return true;
@@ -409,7 +418,7 @@ bool Session::start(std::uint32_t seed, std::string* err) {
 
 bool Session::request(const Action& action, std::string* err) {
     if (role_ != SessionRole::Client || !started_) {
-        if (err) *err = "sessao sem partida iniciada";
+        if (err) *err = i18n::text(i18n::Text::NetNoMatch);
         return false;
     }
     if (!queueMessage(makeAction(action))) {
@@ -425,7 +434,7 @@ bool Session::request(const Action& action, std::string* err) {
 
 bool Session::relay(const Action& action, std::string* err) {
     if (role_ != SessionRole::Host || !started_) {
-        if (err) *err = "sessao sem partida iniciada";
+        if (err) *err = i18n::text(i18n::Text::NetNoMatch);
         return false;
     }
     if (!queueMessage(makeAction(action))) {
@@ -441,7 +450,7 @@ bool Session::relay(const Action& action, std::string* err) {
 
 bool Session::sendFingerprint(const std::string& text, std::string* err) {
     if (role_ != SessionRole::Host || !started_) {
-        if (err) *err = "sessao sem partida iniciada";
+        if (err) *err = i18n::text(i18n::Text::NetNoMatch);
         return false;
     }
     if (!queueMessage(makeFingerprint(text))) {
@@ -457,7 +466,7 @@ bool Session::sendFingerprint(const std::string& text, std::string* err) {
 
 bool Session::sendError(const std::string& text, std::string* err) {
     if (!connected_) {
-        if (err) *err = "sem conexao";
+        if (err) *err = i18n::text(i18n::Text::NetNotConnected);
         return false;
     }
     if (!queueMessage(makeError(text))) {

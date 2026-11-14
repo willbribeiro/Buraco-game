@@ -1,10 +1,11 @@
 // Persistent user configuration.
 //
 // The file is a small, line-oriented `key=value` document so it can be edited
-// by hand and diffed.  It stores the display and sound options; future
-// settings (language) can be added without changing the parser contract:
-// unknown keys are ignored and every value is clamped to a safe range.
+// by hand and diffed.  Unknown keys are ignored and every value is clamped to a
+// safe range, so older builds keep reading newer files.
 #pragma once
+
+#include "i18n.h"
 
 #include <string>
 
@@ -36,6 +37,7 @@ struct Settings {
     int version = 1;
     DisplaySettings display;
     SoundSettings sound;
+    i18n::Language language = i18n::Language::Pt;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };

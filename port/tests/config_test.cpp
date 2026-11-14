@@ -208,3 +208,41 @@ TEST_CASE("display config normalize reports only real changes") {
     CHECK(normalize(settings));
     CHECK_EQ(settings.sound.volume, 100);
 }
+
+TEST_CASE("config defaults to Portuguese") {
+    const Settings s = defaults();
+    CHECK(s.language == i18n::Language::Pt);
+    CHECK(serialize(s).find("language=pt") != std::string::npos);
+}
+
+TEST_CASE("config serializes and parses the language") {
+    Settings expected;
+    expected.language = i18n::Language::En;
+    const std::string text = serialize(expected);
+    CHECK(text.find("language=en") != std::string::npos);
+
+    Settings parsed;
+    std::string warning;
+    CHECK(parse(text, parsed, &warning));
+    CHECK(warning.empty());
+    CHECK(parsed == expected);
+    CHECK(parsed.language == i18n::Language::En);
+
+    CHECK(parse("language=pt\n", parsed));
+    CHECK(parsed.language == i18n::Language::Pt);
+}
+
+TEST_CASE("config reports an invalid language and keeps Portuguese") {
+    Settings parsed;
+    std::string warning;
+    CHECK(!parse("language=fr\n", parsed, &warning));
+    CHECK(warning.find("language") != std::string::npos);
+    CHECK(parsed.language == i18n::Language::Pt);
+}
+
+TEST_CASE("config normalize fixes an invalid language") {
+    Settings settings = defaults();
+    settings.language = static_cast<i18n::Language>(9);
+    CHECK(normalize(settings));
+    CHECK(settings.language == i18n::Language::Pt);
+}

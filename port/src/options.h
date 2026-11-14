@@ -18,6 +18,7 @@ enum class Row {
     Fullscreen,
     Vsync,
     Maximized,
+    Language,      // Portuguese or English
     Sound,         // sound effects on/off
     Volume,        // 0..100, in steps of 10
     Center,        // action: center the window

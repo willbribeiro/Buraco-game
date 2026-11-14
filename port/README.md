@@ -33,6 +33,7 @@ extraída do próprio jogo).
 | Efeitos sonoros sintetizados (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro), com volume | ✅ |
 | Modo headless para regressão/diff (inclusive do fluxo inicial) | ✅ |
 | Modo online na LAN: host/cliente, ações em lockstep e detecção de dessincronização | ✅ |
+| Interface em português (padrão) e inglês, com troca imediata na tela F9 | ✅ |
 
 ## 2. Build
 
@@ -114,6 +115,7 @@ integer_scale=0
 vsync=1
 sound=1
 sound_volume=70
+language=pt
 ```
 
 | Chave | Efeito |
@@ -128,6 +130,7 @@ sound_volume=70
 | `vsync` | VSync ligado/desligado |
 | `sound` | efeitos sonoros ligados/desligados |
 | `sound_volume` | volume dos efeitos em `0..100` (passos de 10 na tela F9) |
+| `language` | idioma da interface: `pt` (padrão) ou `en` |
 
 Na inicialização o tamanho é reduzido para caber em 90% da área útil da tela,
 preservando 8:5. O padrão é 2× (1280×800); em telas como 1366×768 ele encolhe
@@ -138,11 +141,12 @@ diagnóstico).
 
 Durante o jogo, `F11` ou `Alt+Enter` alternam entre janela e tela cheia
 (borderless, na resolução da área de trabalho). Ao fechar, o porte grava
-tamanho, posição, maximizada, tela cheia, escala, escala inteira, VSync, som e
-volume no `buraco.cfg`. Para não sobrescrever as preferências do jogador, a
-gravação é omitida quando a execução usa opções de vídeo ou som na linha de
-comando (`--scale`, `--fullscreen`, `--integer-scale`, `--vsync`, `--sound`,
-`--volume`) e em execuções de demonstração (`--auto ... --gui`).
+tamanho, posição, maximizada, tela cheia, escala, escala inteira, VSync, som,
+volume e idioma no `buraco.cfg`. Para não sobrescrever as preferências do
+jogador, a gravação é omitida quando a execução usa opções de vídeo, som ou
+idioma na linha de comando (`--scale`, `--fullscreen`, `--integer-scale`,
+`--vsync`, `--sound`, `--volume`, `--language`) e em execuções de demonstração
+(`--auto ... --gui`).
 
 Opções de linha de comando relacionadas (válidas só para a execução; não
 alteram o arquivo):
@@ -152,6 +156,7 @@ alteram o arquivo):
 .\build\buraco.exe --scale 3 --vsync off
 .\build\buraco.exe --fullscreen --integer-scale
 .\build\buraco.exe --sound off --volume 40
+.\build\buraco.exe --language en           # interface em inglês só nesta execução
 .\build\buraco.exe --hotseat               # dois jogadores locais (troca de vez)
 .\build\buraco.exe --online-port 7800      # porta do host online (padrão 7777)
 .\build\buraco.exe --audio-test            # toca todos os efeitos pelo dispositivo real
@@ -170,11 +175,23 @@ proximo jogador aperta ENTER antes de a mao ser revelada, e o rodape mostra
 essa linha, continuam abrindo como a partida solo de sempre (jogador x IA).
 
 A tela de opções (`F9`) edita tudo isso em tempo real: escala (Auto ou 1×..8×),
-ajuste inteiro/esticado, tela cheia, VSync, iniciar maximizada, som, volume,
-centralizar a janela e restaurar os padrões (vídeo e som). Setas cima/baixo
-escolhem a linha, esquerda/direita alteram o valor (volume em passos de 10%),
-`ENTER` aplica e `F9`/`ESC` fecha. A partida fica pausada enquanto a tela está
-aberta, e as preferências são gravadas no `buraco.cfg` ao sair.
+ajuste inteiro/esticado, tela cheia, VSync, iniciar maximizada, idioma, som,
+volume, centralizar a janela e restaurar os padrões (vídeo, som e idioma).
+Setas cima/baixo escolhem a linha, esquerda/direita alteram o valor (volume em
+passos de 10%), `ENTER` aplica e `F9`/`ESC` fecha. A partida fica pausada
+enquanto a tela está aberta, e as preferências são gravadas no `buraco.cfg` ao
+sair.
+
+### Idioma (português/inglês)
+
+A interface é em português por padrão; o inglês é selecionado pela linha
+`Idioma` da tela F9 (setas esquerda/direita) ou por `language=en` no
+`buraco.cfg`/`--language en`. A troca na F9 vale no mesmo quadro e é gravada
+junto com as demais preferências ao sair. Os textos são gerados no idioma
+corrente na hora (nomes padrão, mensagens do motor, HUD e todas as telas);
+mensagens antigas já gravadas no save continuam como foram salvas. Arquivos de
+configuração e saves antigos, sem a chave de idioma, continuam válidos e abrem
+em português.
 
 ### Modo online (LAN)
 
@@ -240,7 +257,7 @@ escolhida.
 | F3 | situação geral em tela cheia (partidas, vitórias, pontos, mãos, jogos, mesa e monte) |
 | F2 | grava a partida em `<nome do jogador>.sav` (ou `<nome>2.sav`, `<nome>3.sav`, ...); indisponível no online |
 | F5 | restaura a partida gravada no caminho atual; indisponível no online |
-| F9 | opções de vídeo e som: escala, ajuste, tela cheia, VSync, maximizada, som, volume e posição |
+| F9 | opções de vídeo, som e idioma: escala, ajuste, tela cheia, VSync, maximizada, idioma, som, volume e posição |
 | F11 / Alt+Enter | alterna janela / tela cheia (a preferência é salva ao sair) |
 | ESC | limpa a seleção; sem seleção, encerra (na tela inicial, encerra) |
 
@@ -296,7 +313,9 @@ motor de regras sem depender de foco de janela (comandos a partir de `port\`):
 descoberta do fluxo inicial (útil para testes sem sobrescrever um save real).
 `--savedir <pasta>` define explicitamente a "pasta do jogo" para descoberta e
 numeração dos saves. `--online-port N` (1..65535, padrão 7777) escolhe a porta
-do host no modo online e a porta usada pelo cliente ao conectar. `--flow` faz
+do host no modo online e a porta usada pelo cliente ao conectar. `--language
+pt|en` escolhe o idioma da interface só para a execução (não grava no cfg).
+`--flow` faz
 um `--script` headless começar na tela de
 apresentação (em vez de direto na mesa), permitindo testar o fluxo
 continuar/novo jogo e a digitação do nome. `--check` imprime uma linha por mão fechada
@@ -320,6 +339,7 @@ src/main.cpp        entrada, argumentos, teclado e modos headless
 src/cards.*         modelo de carta, validação de jogo, valor de canastra
 src/game.*          máquina de turnos, IA, contagem de pontos
 src/game_save.cpp   gravação/restauração de partidas
+src/i18n.*          textos da interface em português e inglês
 src/ui.*            apresentação 80x25 da mesa e das telas
 src/video.*         framebuffer de texto (80x25)
 src/renderer.*      fonte VGA + apresentação SDL2
@@ -425,13 +445,20 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 ## 8. Validação
 
-* `ctest --test-dir build` roda os 168 casos de teste (cartas, máquina de
+* `ctest --test-dir build` roda os 179 casos de teste (cartas, máquina de
   turnos, save/load, nomes de arquivo, controladores e hot-seat, rede TCP,
   protocolo, sessão host/cliente e partidas online em lockstep, invariantes,
-  tela, configuração de vídeo e som, cálculo e estado da janela, tela de
+  tela, configuração de vídeo/som/idioma, cálculo e estado da janela, tela de
   opções, síntese e eventos sonoros). O caso de tela compara
   o hash das 25 linhas com a saída capturada de `--auto 400 --seed 1234`, então
-  a divisão do antigo `main.cpp` em módulos não mudou um pixel.
+  a divisão do antigo `main.cpp` em módulos não mudou um pixel; os casos de
+  idioma conferem as telas em inglês e restauram o português ao terminar.
+* A tradução mantém o português como padrão: sem `buraco.cfg` ou com
+  `language=pt`, `--auto 4000 --seed 777`, `--check 20000 --seed 777` e
+  `--savetest 900` continuam byte a byte idênticos ao `HEAD` anterior (hashes
+  SHA-256 `78FB74EA…`, `A07C5AA6…` e `0D62021D…`). O `--flow` ganhou a linha
+  da ajuda que cita o F9, então o hash de referência passou a ser
+  `9BD2FB41…`.
 * `shots/33_deal720.png` (original) vs. `shots/41_port_deal.png` (porte):
   mesma distribuição de linhas, mesma fan vertical de 2 colunas por carta.
 * `--check 20000` fecha partidas inteiras nos seeds 99, 777, 12345, 4242, 7,

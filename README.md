@@ -49,6 +49,7 @@ Os scripts de build detalhados usam *MinGW-w64 GCC 16.2.0 (UCRT, POSIX, SEH)*,
 | `S` / `N` | continua o jogo gravado (`S`) ou cria um novo (`N`) |
 | `F1` / `F3` | ajuda / situação geral em tela cheia |
 | `F2` / `F5` | grava (`<nome>.sav`) / restaura partida |
+| `F9` | opções de vídeo, som e idioma (português/inglês) |
 | `ESC` | limpa a seleção; sem seleção, encerra |
 
 ## Capturas
@@ -85,6 +86,8 @@ Contagem de pontos, jogo por jogo, com bônus e descontos:
   tela cheia.
 * Modo hot-seat local e modo online na LAN (host/cliente, ações em lockstep e
   fallback para hot-seat), com um nome por jogador.
+* Interface em português (padrão) e inglês, com troca imediata na linha
+  `Idioma` da tela `F9` ou por `language=en` no `buraco.cfg`/`--language en`.
 * Fonte VGA 8×16 autêntica (256 glifos × 16 bytes) extraída de uma run do
   `ALLCHARS.COM` no DOSBox-X.
 * Modo *headless* determinístico (`--auto`, `--script`, `--check`,
@@ -101,6 +104,7 @@ port/            o porte SDL2 (C++20)
   src/cards.*    modelo de carta, validação de jogo, valor de canastra
   src/game.*     máquina de turnos, IA, contagem de pontos, partida
   src/game_save.cpp  gravação/restauração de partidas
+  src/i18n.*     textos da interface em português e inglês
   src/ui.*       apresentação 80x25 da mesa e das telas
   src/video.*    framebuffer de texto (80x25)
   src/renderer.* fonte VGA + apresentação SDL2
@@ -130,8 +134,8 @@ ctest --test-dir build --output-on-failure
 
 Os testes usam um harness próprio (`TEST_CASE`/`CHECK`), sem Catch2, e cobrem
 cartas/jogos, máquina de turnos, save/load, nomes de arquivo, hot-seat, rede
-host/cliente, invariantes e a renderização determinística da tela. Detalhes em
-[`port/tests/README.md`](port/tests/README.md).
+host/cliente, invariantes, tradução PT/EN e a renderização determinística da
+tela. Detalhes em [`port/tests/README.md`](port/tests/README.md).
 
 ## Notas
 
@@ -148,5 +152,5 @@ host/cliente, invariantes e a renderização determinística da tela. Detalhes e
 - [x] Som
 - [x] Modo hot-seat local (dois jogadores, troca de vez)
 - [x] Modo multi-jogador em rede (host/cliente na LAN, lockstep e fallback para hot-seat)
-- [ ] Tradução da interface
+- [x] Tradução da interface (português padrão + inglês, F9/`language=pt|en`)
 - [x] Opções de janela/redimensionamento

@@ -1,5 +1,7 @@
 #include "game.h"
 
+#include "i18n.h"
+
 #include <algorithm>
 #include <cstdlib>
 
@@ -35,8 +37,8 @@ void removeCard(std::vector<Card>& hand, const Card& c) {
 }  // namespace
 
 Game::Game() {
-    players_[0].name = "Voce";
-    players_[1].name = "Eu";
+    players_[0].name = i18n::text(i18n::Text::DefaultPlayerName);
+    players_[1].name = i18n::text(i18n::Text::DefaultOpponentName);
 }
 
 uint32_t Game::rnd() {
@@ -108,7 +110,7 @@ void Game::newHand() {
     current_ = (handNumber_ - 1) % 2;
     prompt_ = Prompt::None;
     setPhase(Phase::Draw);
-    message_ = "Embaralhando. Por favor, corte...";
+    message_ = i18n::text(i18n::Text::MsgShuffling);
     timer_ = 0.0;
     beginTurn();
 }
@@ -136,7 +138,7 @@ bool Game::canTakeDiscard() const { return !discard_.empty(); }
 void Game::requestDiscard() {
     if (phase_ != Phase::Play) return;
     setPhase(Phase::Discard);
-    info("Escolha a carta a descartar.");
+    info(i18n::text(i18n::Text::MsgChooseDiscard));
 }
 
 bool Game::draw(bool fromTable) {
@@ -150,21 +152,23 @@ bool Game::draw(bool fromTable) {
         // of the hand, which is also what lastDrawn_ points at below.
         p.hand.insert(p.hand.end(), discard_.begin(), discard_.end());
         discard_.clear();
-        info(isHuman(current_) ? "Voce comprou a mesa." : "Estou comprando a mesa.");
+        info(isHuman(current_) ? i18n::text(i18n::Text::MsgBoughtTable)
+                               : i18n::text(i18n::Text::MsgAiBoughtTable));
         emit(sound::Event::TakePile);
     } else {
         if (monte_.empty()) {
             // The original's deck is a 108-slot array and FUN_1000_2a03 returns
             // 0 when every slot is empty: the draw simply gives no card, the
             // hand shrinks by one on the discard and the deal finally ends.
-            info("O monte acabou.");
+            info(i18n::text(i18n::Text::MsgStockEmpty));
             prompt_ = Prompt::None;
             setPhase(Phase::Play);
             return false;
         }
         p.hand.push_back(monte_.back());
         monte_.pop_back();
-        info(isHuman(current_) ? "Voce comprou do monte." : "Estou comprando do monte.");
+        info(isHuman(current_) ? i18n::text(i18n::Text::MsgBoughtStock)
+                               : i18n::text(i18n::Text::MsgAiBoughtStock));
         emit(sound::Event::DrawDeck);
     }
     prompt_ = Prompt::None;
@@ -197,13 +201,13 @@ Game::LayOptions Game::layOptions(const std::vector<Card>& cards) const {
 }
 
 std::string Game::layMeld(const std::vector<Card>& cards, int target) {
-    if (phase_ != Phase::Play) return "Agora nao e hora de baixar jogos.";
-    if (cards.empty()) return "Escolha pelo menos uma carta.";
+    if (phase_ != Phase::Play) return i18n::text(i18n::Text::MsgNotLayTime);
+    if (cards.empty()) return i18n::text(i18n::Text::MsgChooseCard);
 
     PlayerState& p = players_[current_];
     const bool wouldEmpty = cards.size() == p.hand.size();
     if (wouldEmpty && p.tookMorto && !hasCanastra(p))
-        return "Voce nao pode bater porque nao tem canastra.";
+        return i18n::text(i18n::Text::MsgNeedCanastra);
 
     // A completion is audible only when a meld crossed the canastra mark now;
     // growing an existing canastra stays a plain meld sound.
@@ -229,20 +233,24 @@ std::string Game::layMeld(const std::vector<Card>& cards, int target) {
     // The player explicitly asked for a second meld of a suit that is already
     // on the table.
     if (target == kNewMeld) {
-        if (cards.size() < size_t(MELD_MIN)) return "Um jogo novo precisa de pelo menos 3 cartas.";
+        if (cards.size() < size_t(MELD_MIN))
+            return i18n::text(i18n::Text::MsgNewMeldMin);
         Meld built;
-        if (!buildMeldAuto(cards, built)) return "Estas cartas nao formam um jogo valido.";
-        if (int(p.melds.size()) >= kMaxMelds) return "Nao cabem mais jogos na mesa.";
+        if (!buildMeldAuto(cards, built))
+            return i18n::text(i18n::Text::MsgInvalidMeld);
+        if (int(p.melds.size()) >= kMaxMelds)
+            return i18n::text(i18n::Text::MsgNoMeldRoom);
         p.melds.push_back(built);
-        return commit("Jogo baixado.");
+        return commit(i18n::text(i18n::Text::MsgMeldLaid));
     }
 
     // The player explicitly picked a meld to grow.
     if (target >= 0) {
         if (target >= int(p.melds.size()) || p.melds[target].empty())
-            return "Jogo invalido.";
-        if (!extendMeld(p.melds[target], cards)) return "Estas cartas nao entram neste jogo.";
-        return commit("Jogo aumentado.");
+            return i18n::text(i18n::Text::MsgInvalidMeldTarget);
+        if (!extendMeld(p.melds[target], cards))
+            return i18n::text(i18n::Text::MsgCardsDontFit);
+        return commit(i18n::text(i18n::Text::MsgMeldGrown));
     }
 
     // Automatic mode (AI and scripted play): extend when possible, otherwise
@@ -252,19 +260,20 @@ std::string Game::layMeld(const std::vector<Card>& cards, int target) {
         for (Meld& m : p.melds) {
             if (m.empty() || m.suit != built.suit) continue;
             if (!extendMeld(m, cards)) continue;
-            return commit("Jogo aumentado.");
+            return commit(i18n::text(i18n::Text::MsgMeldGrown));
         }
-        if (int(p.melds.size()) >= kMaxMelds) return "Nao cabem mais jogos na mesa.";
+        if (int(p.melds.size()) >= kMaxMelds)
+            return i18n::text(i18n::Text::MsgNoMeldRoom);
         p.melds.push_back(built);
-        return commit("Jogo baixado.");
+        return commit(i18n::text(i18n::Text::MsgMeldLaid));
     }
 
     for (Meld& m : p.melds) {
         if (m.empty()) continue;
         if (!extendMeld(m, cards)) continue;
-        return commit("Jogo aumentado.");
+        return commit(i18n::text(i18n::Text::MsgMeldGrown));
     }
-    return "Estas cartas nao formam um jogo valido.";
+    return i18n::text(i18n::Text::MsgInvalidMeld);
 }
 
 void Game::afterEmptyHand(bool byMeld) {
@@ -293,7 +302,7 @@ bool Game::takeMorto() {
         morto_.pop_back();
     }
     p.tookMorto = true;
-    info("Voce pegou o morto.");
+    info(i18n::text(i18n::Text::MsgTookMorto));
     emit(sound::Event::Morto);
     return true;
 }
@@ -322,7 +331,7 @@ bool Game::discardCard(const Card& card) {
         return true;
     }
 
-    if (isHuman(current_)) info("Sua vez acabou.");
+    if (isHuman(current_)) info(i18n::text(i18n::Text::MsgTurnOver));
     nextTurn();
     return true;
 }
@@ -338,11 +347,11 @@ void Game::beginTurn() {
     lastDrawn_ = Card{};
     if (isHuman(current_)) {
         if (canTakeDiscard())
-            info("Comprar a mesa? (S/N)");
+            info(i18n::text(i18n::Text::MsgBuyTableQuestion));
         else
-            info("Compre uma carta do monte. <ENTER>");
+            info(i18n::text(i18n::Text::MsgDrawCard));
     } else {
-        info("Agora e minha vez.");
+        info(i18n::text(i18n::Text::MsgMyTurn));
     }
 }
 
@@ -375,13 +384,13 @@ void Game::endHand() {
 
     prompt_ = Prompt::NewHand;
     setPhase(Phase::HandOver);
-    message_ = "Vamos contar os pontos.";
+    message_ = i18n::text(i18n::Text::MsgCountPoints);
 }
 
 void Game::continueAfterHand() {
     if (players_[0].total >= kTargetScore || players_[1].total >= kTargetScore) {
         setPhase(Phase::MatchOver);
-        message_ = "A partida acabou !!!";
+        message_ = i18n::text(i18n::Text::MsgMatchOver);
         return;
     }
     newHand();
@@ -413,19 +422,20 @@ void Game::update(double dt) {
 void Game::announceTurn() {
     if (phase_ == Phase::HandOver || phase_ == Phase::MatchOver) return;
     if (!isHuman(current_)) {
-        message_ = "Agora e minha vez.";
+        message_ = i18n::text(i18n::Text::MsgMyTurn);
         return;
     }
     switch (phase_) {
         case Phase::Draw:
-            message_ = canTakeDiscard() ? "Comprar a mesa (S/N) ?"
-                                        : "Compre uma carta do monte. <ENTER>";
+            message_ = canTakeDiscard()
+                           ? i18n::text(i18n::Text::MsgBuyTableQuestionSpaced)
+                           : i18n::text(i18n::Text::MsgDrawCard);
             break;
         case Phase::Play:
-            message_ = "Baixe os jogos.";
+            message_ = i18n::text(i18n::Text::MsgLayMelds);
             break;
         case Phase::Discard:
-            message_ = "Escolha a carta a descartar.";
+            message_ = i18n::text(i18n::Text::MsgChooseDiscard);
             break;
         default:
             break;
@@ -656,7 +666,8 @@ void Game::aiDiscard() {
         }
     }
     const Card card = me.hand[bestIdx];
-    info(isHuman(current_) ? "Voce descartou." : "Eu vou descartar.");
+    info(isHuman(current_) ? i18n::text(i18n::Text::MsgYouDiscarded)
+                           : i18n::text(i18n::Text::MsgAiDiscarded));
     discardCard(card);
 }
 

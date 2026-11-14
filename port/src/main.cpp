@@ -15,6 +15,7 @@
 #include "game.h"
 #include "audio.h"
 #include "config.h"
+#include "i18n.h"
 #include "net_session.h"
 #include "options.h"
 #include "renderer.h"
@@ -143,6 +144,7 @@ static int printDisplayInfo(const config::Settings& settings, const std::string&
     std::printf("vsync: %s\n", settings.display.vsync ? "on" : "off");
     std::printf("sound: %s\n", settings.sound.enabled ? "on" : "off");
     std::printf("volume: %d%%\n", settings.sound.volume);
+    std::printf("language: %s\n", i18n::code(settings.language));
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::printf("display: unavailable (%s)\n", SDL_GetError());
@@ -242,6 +244,7 @@ int main(int argc, char** argv) {
     std::optional<bool> cliVsync;
     std::optional<bool> cliSound;
     std::optional<int> cliVolume;
+    std::optional<i18n::Language> cliLanguage;
     std::string cliError;
 
     for (int i = 1; i < argc; ++i) {
@@ -296,6 +299,10 @@ int main(int argc, char** argv) {
                 cliVolume = int(value);
             else
                 cliError = "invalid --volume value (use 0..100)";
+        } else if (a == "--language" && i + 1 < argc) {
+            i18n::Language value;
+            if (i18n::parseLanguage(argv[++i], value)) cliLanguage = value;
+            else cliError = "invalid --language value (use pt or en)";
         } else if (a == "--display-info") {
             displayInfo = true;
         } else if (a == "--hotseat") {
@@ -310,7 +317,8 @@ int main(int argc, char** argv) {
         } else if (a == "--audio-test") {
             audioTest = true;
         } else if (a == "--config" || a == "--scale" || a == "--vsync" ||
-                   a == "--sound" || a == "--volume" || a == "--online-port") {
+                   a == "--sound" || a == "--volume" || a == "--online-port" ||
+                   a == "--language") {
             cliError = "missing value for " + a;
         }
     }
@@ -327,7 +335,7 @@ int main(int argc, char** argv) {
     const bool displayOverride = cliScale.has_value() || cliFullscreen.has_value() ||
                                  cliIntegerScale.has_value() || cliVsync.has_value();
     const bool settingsOverride = displayOverride || cliSound.has_value() ||
-                                  cliVolume.has_value();
+                                  cliVolume.has_value() || cliLanguage.has_value();
     bool headless = (!scriptPath.empty() || autoSteps > 0) && !guiAfterAuto;
     // Every batch mode (script, auto, check, savetest) keeps the historical
     // default seed so failures are reproducible; only the windowed game picks
@@ -356,11 +364,16 @@ int main(int argc, char** argv) {
         if (cliVsync) cfg.display.vsync = *cliVsync;
         if (cliSound) cfg.sound.enabled = *cliSound;
         if (cliVolume) cfg.sound.volume = *cliVolume;
+        if (cliLanguage) cfg.language = *cliLanguage;
         config::normalize(cfg);
         if (!configWarning.empty())
             std::fprintf(stderr, "config: %s", configWarning.c_str());
         if (displayInfo) return printDisplayInfo(cfg, configFile, configFound);
     }
+    // The language must be in place before the first Game exists: the default
+    // player names and every message are translated at construction time.
+    if (cliLanguage) cfg.language = *cliLanguage;
+    i18n::setLanguage(cfg.language);
 
     dos::Video video;
 
@@ -390,13 +403,16 @@ int main(int argc, char** argv) {
     auto startMatch = [&](const std::string& name1, const std::string& name2) {
         const uint32_t matchSeed = seed ? seed : (batch ? 1234u : makeSeed());
         if (twoPlayers) {
-            const std::string p1 = name1.empty() ? "JOGADOR 1" : name1;
-            const std::string p2 = name2.empty() ? "JOGADOR 2" : name2;
+            const std::string p1 =
+                name1.empty() ? i18n::text(i18n::Text::DefaultPlayer1) : name1;
+            const std::string p2 =
+                name2.empty() ? i18n::text(i18n::Text::DefaultPlayer2) : name2;
             game.newMatch(p1, matchSeed, p2);
             game.setController(0, buraco::Controller::Human);
             game.setController(1, buraco::Controller::Human);
         } else {
-            game.newMatch(name1.empty() ? "JOGADOR" : name1, matchSeed);
+            game.newMatch(name1.empty() ? i18n::text(i18n::Text::DefaultPlayer) : name1,
+                          matchSeed);
             game.setController(0, buraco::Controller::Human);
             game.setController(1, buraco::Controller::Ai);
         }
@@ -409,7 +425,7 @@ int main(int argc, char** argv) {
     } else {
         // Batch hot-seat keeps the phase-1 default seat names; solo keeps the
         // historical "JOGADOR" name used by the regression dumps.
-        startMatch(twoPlayers ? "" : "JOGADOR", "");
+        startMatch(twoPlayers ? "" : i18n::text(i18n::Text::DefaultPlayer), "");
     }
     bool started = false;
     bool running = true;
@@ -485,7 +501,7 @@ int main(int argc, char** argv) {
         const std::uint32_t matchSeed = seed ? seed : makeSeed();
         std::string err;
         if (!onlineSession.start(matchSeed, &err)) {
-            ui.onlineError = "Nao consegui iniciar: " + err;
+            ui.onlineError = i18n::format(i18n::Text::MsgStartFailed, err.c_str());
             return false;
         }
         game.newMatch(onlineSession.hostName(), matchSeed,
@@ -500,7 +516,7 @@ int main(int argc, char** argv) {
         ui.screen = ui::UiState::Screen::Game;
         resetSelection();
         onlineSession.sendFingerprint(buraco::net::fingerprintText(game));
-        game.setMessage("Partida online iniciada.");
+        game.setMessage(i18n::text(i18n::Text::MsgOnlineStarted));
         return true;
     };
 
@@ -516,7 +532,7 @@ int main(int argc, char** argv) {
         ui.onlineError.clear();
         ui.screen = ui::UiState::Screen::Game;
         resetSelection();
-        game.setMessage("Partida online iniciada.");
+        game.setMessage(i18n::text(i18n::Text::MsgOnlineStarted));
     };
 
     auto beginHost = [&]() {
@@ -524,9 +540,9 @@ int main(int argc, char** argv) {
         onlineActive = onlineSession.host(onlinePort, ui.firstName, &err);
         ui.onlineError = onlineActive ? std::string() : err;
         ui.onlineStatus =
-            onlineActive ? "Aguardando conexao na porta " +
-                               std::to_string(onlinePort) + "..."
-                         : std::string();
+            onlineActive
+                ? i18n::format(i18n::Text::MsgWaitingPort, int(onlinePort))
+                : std::string();
     };
 
     auto beginJoin = [&]() {
@@ -536,8 +552,8 @@ int main(int argc, char** argv) {
             onlineSession.join(ui.inputAddress, onlinePort, ui.firstName, &err);
         ui.onlineError = onlineActive ? std::string() : err;
         ui.onlineStatus =
-            onlineActive ? "Conectando a " + ui.inputAddress + ":" +
-                               std::to_string(onlinePort) + "..."
+            onlineActive ? i18n::format(i18n::Text::MsgConnecting,
+                                        ui.inputAddress.c_str(), int(onlinePort))
                          : std::string();
     };
 
@@ -552,19 +568,18 @@ int main(int argc, char** argv) {
             onlineSession.role() == buraco::net::SessionRole::Host;
         if (onlineMatch && game.phase() != buraco::Phase::HandOver &&
             game.current() != onlineSession.localSeat()) {
-            game.setMessage("Aguarde a sua vez.");
+            game.setMessage(i18n::text(i18n::Text::MsgWaitYourTurn));
             return false;
         }
         if (onlineMatch && !onlineHost) {
             if (awaitingEcho) return false;
             std::string err;
             if (!onlineSession.request(action, &err)) {
-                fallbackToHotseat(
-                    "Conexao perdida. Partida continua em hot-seat local.");
+                fallbackToHotseat(i18n::text(i18n::Text::MsgConnectionLost));
                 return false;
             }
             awaitingEcho = true;
-            game.setMessage("Jogada enviada. Aguardando o host...");
+            game.setMessage(i18n::text(i18n::Text::MsgMoveSent));
             return true;
         }
 
@@ -578,8 +593,7 @@ int main(int argc, char** argv) {
             if (!onlineSession.relay(action, &err) ||
                 !onlineSession.sendFingerprint(
                     buraco::net::fingerprintText(game), &err)) {
-                fallbackToHotseat(
-                    "Conexao perdida. Partida continua em hot-seat local.");
+                fallbackToHotseat(i18n::text(i18n::Text::MsgConnectionLost));
                 return false;
             }
         }
@@ -607,8 +621,7 @@ int main(int argc, char** argv) {
         if (!onlineSession.relay(action, &err) ||
             !onlineSession.sendFingerprint(buraco::net::fingerprintText(game),
                                            &err)) {
-            fallbackToHotseat(
-                "Conexao perdida. Partida continua em hot-seat local.");
+            fallbackToHotseat(i18n::text(i18n::Text::MsgConnectionLost));
             return;
         }
         resetSelection();
@@ -623,8 +636,7 @@ int main(int argc, char** argv) {
         awaitingEcho = false;
         std::string err;
         if (!buraco::net::apply(game, action, &err)) {
-            fallbackToHotseat(
-                "Dessincronizacao com o host. Partida continua em hot-seat local.");
+            fallbackToHotseat(i18n::text(i18n::Text::MsgDesyncHost));
             return;
         }
         resetSelection();
@@ -647,11 +659,13 @@ int main(int argc, char** argv) {
         if (events.connected) {
             ui.onlineError.clear();
             if (role == buraco::net::SessionRole::Host)
-                ui.onlineStatus = onlineSession.clientName() +
-                                  " conectou. ENTER para comecar.";
+                ui.onlineStatus =
+                    i18n::format(i18n::Text::MsgClientConnected,
+                                 onlineSession.clientName().c_str());
             else
-                ui.onlineStatus = "Conectado a " + onlineSession.hostName() +
-                                  ". Aguardando o host iniciar...";
+                ui.onlineStatus =
+                    i18n::format(i18n::Text::MsgConnectedWaiting,
+                                 onlineSession.hostName().c_str());
         }
         if (events.started && role == buraco::net::SessionRole::Client)
             startOnlineClient();
@@ -667,23 +681,22 @@ int main(int argc, char** argv) {
             if (onlineActive && role == buraco::net::SessionRole::Client &&
                 !events.fingerprint.empty() &&
                 events.fingerprint != buraco::net::fingerprintText(game)) {
-                fallbackToHotseat(
-                    "Dessincronizacao detectada. Partida continua em hot-seat local.");
+                fallbackToHotseat(i18n::text(i18n::Text::MsgDesyncDetected));
             }
         }
 
         if (events.disconnected && onlineActive) {
             if (started && ui.screen == ui::UiState::Screen::Game) {
                 fallbackToHotseat(
-                    "Conexao encerrada. Partida continua em hot-seat local.");
+                    i18n::text(i18n::Text::MsgConnectionClosedHotseat));
             } else if (role == buraco::net::SessionRole::Host &&
                        onlineSession.state() ==
                            buraco::net::SessionState::Listening) {
                 ui.onlineStatus =
-                    "Cliente desconectou. Aguardando outra conexao...";
+                    i18n::text(i18n::Text::MsgClientDisconnected);
                 ui.onlineError.clear();
             } else {
-                ui.onlineError = "Conexao encerrada.";
+                ui.onlineError = i18n::text(i18n::Text::MsgConnectionEnded);
             }
         }
 
@@ -696,8 +709,9 @@ int main(int argc, char** argv) {
                    !onlineSession.connected() &&
                    onlineSession.state() ==
                        buraco::net::SessionState::Listening) {
-            ui.onlineStatus = "Aguardando conexao na porta " +
-                              std::to_string(onlineSession.localPort()) + "...";
+            ui.onlineStatus =
+                i18n::format(i18n::Text::MsgWaitingPort,
+                             int(onlineSession.localPort()));
         }
     };
 
@@ -743,10 +757,10 @@ int main(int argc, char** argv) {
                     ui.screen = Screen::Game;
                     adoptLoadedMode();
                     resetSelection();
-                    game.setMessage("Jogo restaurado.");
+                    game.setMessage(i18n::text(i18n::Text::MsgRestored));
                 } else {
                     ui.inputName.clear();
-                    ui.inputError = "Nao consegui ler o jogo gravado. Digite um nome.";
+                    ui.inputError = i18n::text(i18n::Text::NameLoadError);
                     ui.nameSeat = 0;
                     ui.firstName.clear();
                     ui.twoPlayers = twoPlayers;
@@ -804,13 +818,15 @@ int main(int argc, char** argv) {
                 std::string name = ui.inputName;
                 if (name.empty()) {
                     if (ui.online) {
-                        name = "JOGADOR";
+                        name = i18n::text(i18n::Text::DefaultPlayer);
                     } else if (!twoPlayers) {
-                        ui.inputError = "Digite um nome antes de continuar.";
+                        ui.inputError = i18n::text(i18n::Text::NameEmptyError);
                         return;
                     } else {
                         // Empty input in hot-seat keeps the default seat name.
-                        name = ui.nameSeat == 0 ? "JOGADOR 1" : "JOGADOR 2";
+                        name = i18n::text(ui.nameSeat == 0
+                                              ? i18n::Text::DefaultPlayer1
+                                              : i18n::Text::DefaultPlayer2);
                     }
                 }
                 if (ui.online) {
@@ -913,20 +929,21 @@ int main(int argc, char** argv) {
         // match can be restored without starting a fresh one.
         if (sym == SDLK_F2) {
             if (onlineActive || game.hasRemote()) {
-                game.setMessage("Gravar nao esta disponivel no modo online.");
+                game.setMessage(i18n::text(i18n::Text::MsgSaveDisabledOnline));
                 return;
             }
             if (game.saveTo(save::path()))
-                game.setMessage("Jogo gravado em " + save::path() + ".");
+                game.setMessage(
+                    i18n::format(i18n::Text::MsgSavedTo, save::path().c_str()));
             else {
-                game.setMessage("Nao consegui gravar o jogo.");
+                game.setMessage(i18n::text(i18n::Text::MsgSaveFailed));
                 game.signalError();
             }
             return;
         }
         if (sym == SDLK_F5) {
             if (onlineActive || game.hasRemote()) {
-                game.setMessage("Restaurar nao esta disponivel no modo online.");
+                game.setMessage(i18n::text(i18n::Text::MsgLoadDisabledOnline));
                 return;
             }
             if (game.loadFrom(save::path())) {
@@ -935,9 +952,9 @@ int main(int argc, char** argv) {
                 ui.status = false;
                 adoptLoadedMode();
                 resetSelection();
-                game.setMessage("Jogo restaurado.");
+                game.setMessage(i18n::text(i18n::Text::MsgRestored));
             } else {
-                game.setMessage("Nao consegui restaurar o jogo.");
+                game.setMessage(i18n::text(i18n::Text::MsgLoadFailed));
                 game.signalError();
             }
             return;
@@ -1007,7 +1024,8 @@ int main(int argc, char** argv) {
                         action.kind = buraco::net::ActionKind::Continue;
                         if (perform(action)) resetSelection();
                     } else {
-                        game.setMessage("Aguardando o host continuar.");
+                        game.setMessage(
+                            i18n::text(i18n::Text::MsgWaitHostContinue));
                     }
                 } else {
                     game.continueAfterHand();
@@ -1019,7 +1037,8 @@ int main(int argc, char** argv) {
         if (game.phase() == Phase::MatchOver) {
             if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) {
                 if (onlineActive && onlineSession.started()) {
-                    game.setMessage("Partida online encerrada. ESC para sair.");
+                    game.setMessage(
+                        i18n::text(i18n::Text::MsgOnlineMatchOver));
                 } else {
                     startMatch(game.player(0).name, game.player(1).name);
                     resetSelection();
@@ -1123,7 +1142,7 @@ int main(int argc, char** argv) {
                         ui.layChoice = true;
                         ui.layTarget = opts.targets.front();
                         ui.layCards = chosen;
-                        game.setMessage("Aumentar o jogo (A) ou baixar um novo (N)?");
+                        game.setMessage(i18n::text(i18n::Text::MsgLayChoice));
                         return;
                     }
                     const int target = !opts.targets.empty()
@@ -1188,7 +1207,7 @@ int main(int argc, char** argv) {
         };
 
         buraco::Game a;
-        a.newMatch("JOGADOR", seed ? seed : 1234u);
+        a.newMatch(i18n::text(i18n::Text::DefaultPlayer), seed ? seed : 1234u);
         advance(a, saveTestSteps);
         const std::string before = report::strictLine(a);
         bool ok = a.saveTo(save::path());
@@ -1385,7 +1404,8 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
         return 1;
     }
-    if (!guiAfterAuto) game.setMessage("Embaralhando. Por favor, corte... <ENTER>");
+    if (!guiAfterAuto)
+        game.setMessage(i18n::text(i18n::Text::MsgShufflingEnter));
     resetSelection();
 
     // Sound is part of the window presentation only: headless modes never open
@@ -1460,6 +1480,7 @@ int main(int argc, char** argv) {
                             options::handleKey(optionsState, *optionKey, cfg);
                         if (action == options::Action::Apply ||
                             action == options::Action::Reset) {
+                            i18n::setLanguage(cfg.language);
                             renderer.apply(cfg.display);
                             synth.setEnabled(cfg.sound.enabled);
                             synth.setVolume(cfg.sound.volume);

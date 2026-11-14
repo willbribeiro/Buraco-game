@@ -18,6 +18,7 @@ add_library(buraco_core STATIC
     src/config.cpp
     src/game.cpp
     src/game_save.cpp
+    src/i18n.cpp
     src/net.cpp
     src/net_protocol.cpp
     src/net_session.cpp

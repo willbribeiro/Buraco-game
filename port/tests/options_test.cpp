@@ -90,6 +90,22 @@ TEST_CASE("options arrow keys set boolean display rows on and off") {
     CHECK_EQ(settings.display.maximized, true);
 }
 
+TEST_CASE("options language row toggles between Portuguese and English") {
+    State state;
+    config::Settings settings;
+    CHECK(settings.language == i18n::Language::Pt);
+    CHECK_EQ(value(Row::Language, settings), "Portugues");
+
+    select(state, Row::Language);
+    CHECK(handleKey(state, Key::Right, settings) == Action::Apply);
+    CHECK(settings.language == i18n::Language::En);
+    CHECK_EQ(value(Row::Language, settings), "English");
+    CHECK(handleKey(state, Key::Left, settings) == Action::Apply);
+    CHECK(settings.language == i18n::Language::Pt);
+    CHECK(handleKey(state, Key::Enter, settings) == Action::Apply);
+    CHECK(settings.language == i18n::Language::En);
+}
+
 TEST_CASE("options sound rows toggle audio and step the volume") {
     State state;
     config::Settings settings;
@@ -138,6 +154,7 @@ TEST_CASE("options actions center, reset and close") {
     settings.display.fullscreen = true;
     settings.sound.enabled = false;
     settings.sound.volume = 10;
+    settings.language = i18n::Language::En;
     CHECK(handleKey(state, Key::Right, settings) == Action::None);
     CHECK(handleKey(state, Key::Enter, settings) == Action::Reset);
     CHECK(settings == config::defaults());
@@ -176,6 +193,8 @@ TEST_CASE("options text describes the live settings") {
     CHECK_EQ(value(Row::Sound, settings), "Nao");
     CHECK_EQ(label(Row::Volume), "Volume");
     CHECK_EQ(value(Row::Volume, settings), "70%");
+    CHECK_EQ(label(Row::Language), "Idioma");
+    CHECK_EQ(value(Row::Language, settings), "Portugues");
 
     CHECK(isAction(Row::Center));
     CHECK(isAction(Row::Reset));
@@ -198,6 +217,8 @@ TEST_CASE("options screen shows the selection and the current values") {
     CHECK(rowText(v, 3)[2] == '>');
     CHECK(rowText(v, 6).find("VSync") != std::string::npos);
     CHECK(rowText(v, 6).find("Nao") != std::string::npos);
+    CHECK(rowText(v, 8).find("Idioma") != std::string::npos);
+    CHECK(rowText(v, 8).find("Portugues") != std::string::npos);
     CHECK(rowText(v, 9).find("Som") != std::string::npos);
     CHECK(rowText(v, 10).find("Volume") != std::string::npos);
     CHECK(rowText(v, 10).find("40%") != std::string::npos);

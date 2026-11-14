@@ -25,6 +25,12 @@ bool startsWith(const std::string& s, const std::string& prefix) {
     return s.rfind(prefix, 0) == 0;
 }
 
+bool screenContains(const dos::Video& v, const std::string& needle) {
+    for (int r = 0; r < ui::ROWS; ++r)
+        if (rowText(v, r).find(needle) != std::string::npos) return true;
+    return false;
+}
+
 // FNV-1a over the 25 visible character rows, exactly what the --auto baseline
 // prints.  The same hash can be computed from a captured auto400.txt dump.
 uint64_t screenHash(const dos::Video& v) {
@@ -96,6 +102,7 @@ TEST_CASE("the intro screen is the framed help text") {
     CHECK_EQ(int(v.text[(1 * ui::COLS + 1) * 2]), 0xC9);  // ╔
     CHECK_EQ(int(v.text[(23 * ui::COLS + 78) * 2]), 0xBC); // ╝
     CHECK(rowText(v, 2).find("Vamos jogar buraco ?") != std::string::npos);
+    CHECK(screenContains(v, "Para ver as opcoes do jogo, aperte F9."));
 }
 
 TEST_CASE("the name entry screen echoes the typed name") {

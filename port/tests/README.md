@@ -22,7 +22,7 @@ Os testes são compilados por padrão. Para desligá-los:
 cmake -S port -B port\build -DBURACO_BUILD_TESTS=OFF ...
 ```
 
-O script `run_tests.ps1` faz o build e a execução em um passo. A suíte tem 168
+O script `run_tests.ps1` faz o build e a execução em um passo. A suíte tem 179
 casos; `ctest` roda todos e falha se algum `CHECK` falhar.
 
 ## Arquivos
@@ -39,7 +39,8 @@ casos; `ctest` roda todos e falha se algum `CHECK` falhar.
 | `config_test.cpp` | arquivo `buraco.cfg`, defaults de vídeo/som, clamps, valores inválidos e round-trip |
 | `window_scale_test.cpp` | tamanho da janela por escala, encaixe na área útil e escala inteira |
 | `window_state_test.cpp` | posição fora dos monitores, resize/move do usuário, maximizada |
-| `options_test.cpp` | navegação da tela F9, escala, toggles, som/volume, reset e desenho |
+| `options_test.cpp` | navegação da tela F9, escala, toggles, idioma, som/volume, reset e desenho |
+| `i18n_test.cpp` | padrão português, parse/toggle de idioma, textos e telas em inglês |
 | `sound_test.cpp` | cues, síntese, envelope, silêncio e eventos emitidos pelo `Game` |
 | `report_test.cpp` | `stateLine`/`strictLine` e `checkInvariants` (108 cartas) |
 | `ui_test.cpp` | geometria da tela, telas de ajuda/nome/contagem/online e hash dourado |
@@ -71,9 +72,12 @@ casos; `ctest` roda todos e falha se algum `CHECK` falhar.
   acompanhada. A lógica pura fica em `window_state.*`; o SDL só fornece os
   eventos e retângulos dos monitores.
 * **Opções (F9)**: navegação circular, escala Auto/1×..8×, toggles de ajuste
-  inteiro, tela cheia, VSync e maximizada, som ligado/desligado e volume em
-  passos de 10%, centralizar, restaurar padrões de vídeo e som e fechar; o
-  desenho mostra a linha selecionada e os valores atuais.
+  inteiro, tela cheia, VSync, maximizada e idioma, som ligado/desligado e
+  volume em passos de 10%, centralizar, restaurar padrões de vídeo, som e
+  idioma e fechar; o desenho mostra a linha selecionada e os valores atuais.
+* **Idioma**: o padrão é português; `parseLanguage` aceita `pt`/`en` e
+  variações, a tabela cobre os textos do motor, HUD e telas, e os casos em
+  inglês restauram o português ao terminar para não afetar o hash dourado.
 * **Som**: cada cue tem tons e durações estáveis, o envelope ataca/decai, mudo
   e volume 0 produzem silêncio exato e o `Game` emite os eventos certos
   (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro)
