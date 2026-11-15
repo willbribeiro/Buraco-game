@@ -473,6 +473,8 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
   permanece idêntico nos oito seeds; `--savetest 2000` também passa no 31337.
   O teste compara ids físicos e flags de curinga, e re-serializa o estado
   carregado para garantir que o save não perde nenhum campo.
+* Os scripts de teclado abaixo ficam em `work/`, um workspace local que não é
+  versionado; os caminhos são exemplos para reproduzir os cenários.
 * `work/keys_buymesa2.txt` (`F5`, `S`): a mão vai de 11 para 14 cartas e a mesa
   de 3 para 0 — a compra leva o descarte inteiro.
 * `work/keys_lay_new.txt` / `work/keys_lay_grow.txt`: com 6-7-8♥ na mão e um

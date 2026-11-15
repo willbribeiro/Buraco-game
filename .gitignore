@@ -11,15 +11,8 @@ port/build/
 
 # Generated files from unpacking
 unpack/
-work/toolchain/
-work/unp/
-work/unpack/
-work/unp_candidate.zip
-work/*.pid
-work/*.sav
-work/*.txt*
-work/*.log
-work/*.err
+# Local reverse-engineering workspace (not published)
+work/
 
 # IDE
 .vscode/

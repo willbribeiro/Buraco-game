@@ -7,7 +7,7 @@ O projeto é dividido em duas frentes:
 
 1. **Reengenharia reversa** do executável original — descompactação com
    *UNP 4.11*, análise em *Ghidra* e captura de runs em *DOSBox-X*
-   (regiões `work/` e `tools/`);
+   (scripts em `tools/`; o workspace `work/` é mantido apenas localmente);
 2. **Porte nativo** — reimplementação do jogo em **C++20 + SDL2**, sem
    emulação: regras, baralho, IA, máquina de turnos e apresentação foram
    reescritos, mantendo a mesma tela de texto 80×25 (glifos CP437 com a
@@ -119,8 +119,10 @@ port/            o porte SDL2 (C++20)
   assets/        font8x16.bin (fonte VGA extraída do executável)
 shots/           capturas do original e do porte
 tools/           scripts de captura (Python), extração de fonte, run/livre
-work/            descompilados, runs de teste, toolchain SDL2, corpos provisórios
 ```
+
+`work/` (descompilados do Ghidra, scripts de captura e toolchain SDL2) é um
+workspace local, ignorado pelo Git e fora do histórico público.
 
 O porte escreve direto no framebuffer de texto `dos::Video` (80×25) e uma
 camada separada (`ui::*` + `renderer.*`) desenha os glifos CP437 em SDL2. O
@@ -146,9 +148,10 @@ tela. Detalhes em [`port/tests/README.md`](port/tests/README.md).
 
 * O executável original `BURACO.EXE` não é distribuído neste repositório.
   Todos os direitos do jogo original pertencem aos seus donos.
-* Run de referência para a régua da fonte: veja `tools/UNPACK.md` e
-  `work/ghidra/out/decompiled.c` (funções `FUN_1000_1920`, `FUN_1000_258a`,
-  `FUN_1000_30bf`).
+* Run de referência para a régua da fonte: veja `tools/UNPACK.md`. O
+  descompilado do Ghidra (funções `FUN_1000_1920`, `FUN_1000_258a`,
+  `FUN_1000_30bf`) é mantido apenas no workspace local `work/`, que não é
+  versionado.
 * Semente: no modo interativo o jogo sorteia uma semente nova por partida;
   nos modos de teste ela é fixada (`--seed N`) para ser reproduzível.
 
