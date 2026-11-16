@@ -70,10 +70,14 @@ void rememberPosition(SDL_Window* window, int& x, int& y) {
 
 bool Renderer::init(const char* title, config::DisplaySettings& settings) {
     // These hints must be set before SDL_Init/CreateWindow.  Nearest sampling
-    // keeps the VGA glyphs crisp; per-monitor DPI awareness avoids the blurry
-    // bitmap scaling Windows applies to DPI-unaware windows.
-    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+    // keeps the VGA glyphs crisp.  The per-monitor DPI hint avoids the blurry
+    // bitmap scaling Windows applies to DPI-unaware windows; it is Windows-only
+    // and its macro only exists in SDL 2.24+, so the name is written out and
+    // guarded instead (older SDL versions ignore unknown hints).
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+#ifdef _WIN32
+    SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
+#endif
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) return false;
 
