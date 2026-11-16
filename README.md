@@ -1,4 +1,4 @@
-# Buraco — do MS-DOS ao Windows com SDL2
+# Buraco — do MS-DOS ao Windows e Linux com SDL2
 
 Reengenharia e porte nativo do clássico de cartas **Buraco** (`BURACO.EXE`),
 originalmente distribuído para MS-DOS.
@@ -40,7 +40,62 @@ compilador (`libgcc_s_seh-1.dll`, `libstdc++-6.dll` e `libwinpthread-1.dll`),
 além de `assets/`. A `SDL2.dll` continua vindo do SDK do SDL2. O zip da release
 inclui todas elas, então o jogo roda em PCs sem o MinGW instalado.
 
-### Controles
+### Linux
+
+Requisitos: CMake 3.20+, compilador C++20 e SDL2 2.0.18+ (`libsdl2-dev` no
+Debian/Ubuntu, `SDL2-devel` no Fedora, `sdl2` no Arch).
+
+```bash
+./port/build.sh
+ctest --test-dir port/build --output-on-failure
+./port/build/buraco
+```
+
+O `build.sh` usa Ninja quando disponível, copia `assets/` para o lado do
+binário e aceita `--build-dir`, `--debug` e `--sdl-dir`. Para instalar no
+layout FHS:
+
+```bash
+cmake --install port/build --prefix /usr/local
+# /usr/local/bin/buraco
+# /usr/local/share/buraco/assets/font8x16.bin
+```
+
+Com o binário instalado, o jogo procura a fonte em
+`<prefixo>/share/buraco/assets` e grava os saves/config em
+`~/.local/share/buraco/buraco/` (a pasta de instalação é somente leitura).
+Rodando direto da árvore de build, tudo fica ao lado do executável, como no
+Windows. `buraco --display-info` mostra os caminhos resolvidos.
+
+### Pacote Linux
+
+```bash
+./packaging/linux/pack_linux.sh              # build + dist/buraco-linux-x86_64.tar.gz
+./packaging/linux/pack_linux.sh --skip-build # reaproveita port/build
+```
+
+O tarball usa o mesmo layout do `cmake --install`:
+
+```
+buraco-linux-x86_64/
+  bin/buraco
+  share/buraco/assets/font8x16.bin
+  share/applications/buraco.desktop
+  share/icons/hicolor/scalable/apps/buraco.svg
+  share/icons/hicolor/256x256/apps/buraco.png
+  README.md
+  INSTALL.txt
+```
+
+Basta extrair e rodar `./buraco-linux-x86_64/bin/buraco` (a fonte é achada em
+`../share/buraco/assets` e os saves ficam na própria pasta). Para instalar no
+sistema, `sudo cp -r bin/* /usr/local/bin/` e
+`sudo cp -r share/* /usr/local/share/`. O script valida o pacote executando o
+binário com `--display-info` antes de compactar e produz um `.tar.gz`
+reproduzível quando `SOURCE_DATE_EPOCH` está definido. O CI publica o tarball
+como artefato `buraco-linux-x64`.
+
+## Controles
 
 | Tecla | Ação |
 |---|---|
@@ -85,10 +140,10 @@ Contagem de pontos, jogo por jogo, com bônus e descontos:
 * Tela de contagem detalhada: cada jogo baixado com seus pontos, soma dos
   jogos, batida, cartas na mão e morto, e o total da mão.
 * Tela inicial com o texto de apresentação; depois do `ENTER`, o jogo procura
-  um progresso gravado na pasta do jogo e pergunta se o jogador quer continuar
-  ou começar um novo. No jogo novo, o nome digitado vira o arquivo de progresso
-  (`joao.sav`, `joao2.sav`, ...). `F2` grava e `F3` mostra a situação geral em
-  tela cheia.
+  um progresso gravado (pasta do jogo ou pasta de dados do usuário) e pergunta
+  se o jogador quer continuar ou começar um novo. No jogo novo, o nome digitado
+  vira o arquivo de progresso (`joao.sav`, `joao2.sav`, ...). `F2` grava e `F3`
+  mostra a situação geral em tela cheia.
 * Modo hot-seat local e modo online na LAN (host/cliente, ações em lockstep e
   fallback para hot-seat), com um nome por jogador.
 * Interface em português (padrão) e inglês, com troca imediata na linha
@@ -113,10 +168,14 @@ port/            o porte SDL2 (C++20)
   src/ui.*       apresentação 80x25 da mesa e das telas
   src/video.*    framebuffer de texto (80x25)
   src/renderer.* fonte VGA + apresentação SDL2
+  src/assets.*   procura a fonte na árvore de build e no layout instalado
   src/save.*     descoberta e nomes dos arquivos de progresso
   src/report.*   dumps de estado e invariantes das 108 cartas
   tests/         testes unitários sem dependências externas
   assets/        font8x16.bin (fonte VGA extraída do executável)
+  build.sh       build Linux (equivalente ao build.ps1)
+packaging/linux/ tarball: pack_linux.sh, buraco.desktop, ícones (SVG/PNG)
+.github/workflows/ci.yml  CI: build + testes no Windows (MSYS2) e no Linux
 shots/           capturas do original e do porte
 tools/           scripts de captura (Python), extração de fonte, run/livre
 ```
@@ -132,6 +191,7 @@ necessário: apenas o modo texto é usado.
 ## Testes
 
 ```powershell
+# Windows
 cd port
 .\build.ps1
 ctest --test-dir build --output-on-failure
@@ -139,10 +199,22 @@ ctest --test-dir build --output-on-failure
 .\build\tests\buraco_tests.exe
 ```
 
+```bash
+# Linux
+./port/tests/run_tests.sh
+```
+
 Os testes usam um harness próprio (`TEST_CASE`/`CHECK`), sem Catch2, e cobrem
-cartas/jogos, máquina de turnos, save/load, nomes de arquivo, hot-seat, rede
-host/cliente, invariantes, tradução PT/EN e a renderização determinística da
-tela. Detalhes em [`port/tests/README.md`](port/tests/README.md).
+cartas/jogos, máquina de turnos, save/load, nomes de arquivo, pasta de save e
+descoberta do progresso mais recente, hot-seat, rede host/cliente, invariantes,
+tradução PT/EN, a renderização determinística da tela e a ordem de busca dos
+assets. Detalhes em [`port/tests/README.md`](port/tests/README.md).
+
+O CI (`.github/workflows/ci.yml`) roda a mesma suíte nos dois sistemas. No
+Linux ele também executa os modos headless (`--check`, `--savetest`, `--flow`
+com `--savedir`), confere que o binário instalado acha a fonte em
+`share/buraco/assets` e que uma pasta `bin` somente leitura manda os saves para
+`~/.local/share/buraco/buraco/`.
 
 ## Notas
 
@@ -162,3 +234,8 @@ tela. Detalhes em [`port/tests/README.md`](port/tests/README.md).
 - [x] Modo multi-jogador em rede (host/cliente na LAN, lockstep e fallback para hot-seat)
 - [x] Tradução da interface (português padrão + inglês, F9/`language=pt|en`)
 - [x] Opções de janela/redimensionamento
+- [x] Build nativo no Linux (`port/build.sh`, `cmake --install` em layout FHS)
+- [x] Saves e config graváveis fora da pasta do executável (instalação somente leitura)
+- [x] CI Linux (build, testes, modos headless e verificação do layout instalado)
+- [x] Pacote Linux: tarball com `.desktop` e ícone (`packaging/linux/pack_linux.sh`)
+- [ ] Pacote Linux: `.deb` e/ou AppImage (opcionais)

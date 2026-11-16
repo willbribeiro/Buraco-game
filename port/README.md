@@ -1,4 +1,4 @@
-# Buraco — porte nativo do `BURACO.EXE` (MS-DOS) para Windows/SDL2
+# Buraco — porte nativo do `BURACO.EXE` (MS-DOS) para Windows e Linux/SDL2
 
 Reimplementação em **C++20 + SDL2** do jogo `BURACO.EXE`, feita a partir da
 engenharia reversa do binário original (DOSBox-X + Ghidra + UNP 4.11).
@@ -28,7 +28,7 @@ extraída do próprio jogo).
 | Sorteio diferente a cada nova partida | ✅ |
 | Fonte VGA 8×16 autêntica extraída do DOSBox-X | ✅ |
 | F1 ajuda, F3 situação geral em tela cheia; mão do adversário sempre oculta | ✅ |
-| F2 salvar por jogador / F5 restaurar (`<nome>.sav` na pasta do jogo) | ✅ |
+| F2 salvar por jogador / F5 restaurar (`<nome>.sav` na pasta do jogo ou na de dados do usuário) | ✅ |
 | Tela inicial, continuar jogo gravado ou novo jogo com 1/2 jogadores e nomes | ✅ |
 | Efeitos sonoros sintetizados (embaralhar, distribuir, comprar, baixar jogo, canastra, morto, bater, erro), com volume | ✅ |
 | Modo headless para regressão/diff (inclusive do fluxo inicial) | ✅ |
@@ -84,7 +84,74 @@ cmake --build build --config Release
 ```
 
 O `CMakeLists.txt` copia `assets/` para o lado do executável (a fonte 8×16 é
-carregada em `SDL_GetBasePath()/assets/font8x16.bin`).
+carregada pelo primeiro caminho válido de `assets::searchDirs()`, ver §6).
+
+### Linux
+
+Requisitos: CMake 3.20+, compilador C++20 e SDL2 **2.0.18+** (primeira versão
+com `SDL_RenderSetVSync` e `SDL_GetTicks64`).
+
+```bash
+# Debian/Ubuntu
+sudo apt install build-essential cmake ninja-build libsdl2-dev
+# Fedora
+sudo dnf install gcc-c++ cmake ninja-build SDL2-devel
+# Arch
+sudo pacman -S base-devel cmake ninja sdl2
+```
+
+Da raiz do repositório:
+
+```bash
+./port/build.sh                 # Release em port/build (usa Ninja se existir)
+./port/tests/run_tests.sh       # build + ctest
+./port/build/buraco             # roda direto da árvore de build
+
+# opções
+./port/build.sh --debug
+./port/build.sh --build-dir build-linux
+./port/build.sh --sdl-dir /opt/SDL2
+./port/build.sh -- -DBURACO_BUILD_TESTS=OFF
+```
+
+`SDL2::SDL2main` só é linkado quando o pacote o oferece (é específico do
+Windows), então o mesmo `CMakeLists.txt` serve aos dois sistemas. Instalação no
+layout FHS:
+
+```bash
+cmake --install port/build --prefix /usr/local
+# /usr/local/bin/buraco
+# /usr/local/share/buraco/assets/font8x16.bin
+# /usr/local/share/applications/buraco.desktop
+# /usr/local/share/icons/hicolor/{scalable,256x256}/apps/buraco.{svg,png}
+```
+
+O `.desktop` e os ícones vêm de `packaging/linux/` e só são instalados quando
+essa pasta existe no código-fonte (`if(EXISTS ...)`), então um snapshot sem o
+empacotamento continua configurando.
+
+### Pacote Linux
+
+`packaging/linux/pack_linux.sh` roda o build e monta um tarball com o mesmo
+layout do `cmake --install`:
+
+```bash
+./packaging/linux/pack_linux.sh                    # dist/buraco-linux-x86_64.tar.gz
+./packaging/linux/pack_linux.sh --skip-build       # reaproveita port/build
+./packaging/linux/pack_linux.sh --build-dir port/build-linux --out /tmp/out
+```
+
+O staging recebe `cmake --install --prefix <stage>/buraco-linux-x86_64` e mais
+`README.md` e `INSTALL.txt`; o binário é stripado (`strip --strip-unneeded`)
+quando a ferramenta existe. Antes de compactar, o script executa o binário
+empacotado com `--display-info` (drivers *dummy*) e falha se a fonte não vier de
+`share/buraco/assets` ou se os saves não caírem na pasta do pacote. O
+`.tar.gz` é reproduzível quando `SOURCE_DATE_EPOCH` está definido
+(`tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@...`). O job
+Linux do CI gera esse tarball e publica como artefato `buraco-linux-x64`.
+`buraco-256.png` é gerado a partir do SVG com
+`rsvg-convert --width 256 --height 256 --format png --output buraco-256.png buraco.svg`
+e fica versionado para o pacote não depender de `librsvg`.
 
 ### Testes
 
@@ -100,10 +167,11 @@ ctest --test-dir build --output-on-failure
 
 ### Configuração de vídeo e som (fase 1)
 
-O porte procura um `buraco.cfg` ao lado do `buraco.exe` (pasta portátil). Se
+O porte procura um `buraco.cfg` ao lado do executável (pasta portátil). Se
 esse arquivo não existir ou não puder ser gravado, a configuração fica em
-`SDL_GetPrefPath("buraco", "buraco")` (normalmente
-`%APPDATA%\buraco\buraco\buraco.cfg`). O arquivo é texto simples:
+`SDL_GetPrefPath("buraco", "buraco")` — `%APPDATA%\buraco\buraco\buraco.cfg` no
+Windows e `~/.local/share/buraco/buraco/buraco.cfg` no Linux. O arquivo é texto
+simples:
 
 ```ini
 # Buraco settings
@@ -144,6 +212,12 @@ comportamento esperado do modo pixel-perfect. Se a posição salva não cair em
 nenhum monitor conectado, a janela é centralizada (`--display-info` mostra o
 diagnóstico).
 
+No **Wayland** o compositor decide onde a janela aparece: o SDL reporta
+`(0,0)` em vez da posição escolhida, então o porte não grava `window_x`/
+`window_y` nesse driver (a posição salva de uma sessão X11 é preservada e volta
+a valer quando o jogo roda em X11 de novo). `--display-info` mostra
+`position: managed by the compositor (wayland, not saved)` nesse caso.
+
 Durante o jogo, `F11` ou `Alt+Enter` alternam entre janela e tela cheia
 (borderless, na resolução da área de trabalho). Ao fechar, o porte grava
 tamanho, posição, maximizada, tela cheia, escala, escala inteira, VSync, som,
@@ -157,7 +231,7 @@ Opções de linha de comando relacionadas (válidas só para a execução; não
 alteram o arquivo):
 
 ```powershell
-.\build\buraco.exe --display-info          # mostra config, display, som e escala calculada
+.\build\buraco.exe --display-info          # config, saves, fonte, display, som e escala
 .\build\buraco.exe --scale 3 --vsync off
 .\build\buraco.exe --fullscreen --integer-scale
 .\build\buraco.exe --sound off --volume 40
@@ -406,16 +480,33 @@ Constantes recuperadas de `FUN_1000_1920` (réguas e divisória) e de
 
 ### Save (`F2`/`F5`)
 
-Arquivo texto `BURACO-SAVE 1` gravado na pasta do jogo (ao lado de
-`buraco.exe`). O nome padrão vem do jogador: `<nome>.sav`, com numeração
-progressiva (`<nome>2.sav`, `<nome>3.sav`, ...) quando o nome já existe;
-`--save <arquivo>` e `--savedir <pasta>` substituem esse caminho nos testes.
-Guarda fase, jogador da vez, semente do RNG, mãos, jogos (15 slots + flags de
-curinga), monte, mesa, morto, placar, a mensagem e as estatísticas da partida
-(`stats <partidas> <vitórias 0> <vitórias 1>`). O load valida os ids (1..108) e
-os contadores antes de substituir o estado; um arquivo corrompido é recusado
-por inteiro, sem quebrar a partida em andamento. Saves antigos sem a linha
-`stats` continuam válidos (as estatísticas começam zeradas).
+Arquivo texto `BURACO-SAVE 1`. O nome padrão vem do jogador: `<nome>.sav`, com
+numeração progressiva (`<nome>2.sav`, `<nome>3.sav`, ...) quando o nome já
+existe; `--save <arquivo>` e `--savedir <pasta>` substituem esse caminho nos
+testes. Guarda fase, jogador da vez, semente do RNG, mãos, jogos (15 slots +
+flags de curinga), monte, mesa, morto, placar, a mensagem e as estatísticas da
+partida (`stats <partidas> <vitórias 0> <vitórias 1>`). O load valida os ids
+(1..108) e os contadores antes de substituir o estado; um arquivo corrompido é
+recusado por inteiro, sem quebrar a partida em andamento. Saves antigos sem a
+linha `stats` continuam válidos (as estatísticas começam zeradas).
+
+**Onde os saves ficam.** `save::dir()` escolhe, nesta ordem:
+
+1. `--save` / `--savedir` (prioridade máxima e exclusiva: nada mais é lido);
+2. a pasta do executável, quando ela é **gravável** (Windows portátil e árvore
+   de build no Linux);
+3. `SDL_GetPrefPath("buraco", "buraco")` —
+   `%APPDATA%\buraco\buraco\` ou `~/.local/share/buraco/buraco/`.
+
+O item 3 é o que faz `F2` funcionar com o binário instalado em `/usr/bin`
+(somente leitura) ou dentro de um AppImage. A gravação é testada com um arquivo
+temporário (`.buraco-write-<n>.tmp`) que é removido em seguida, então não é
+preciso confiar em permissões declaradas.
+
+Ao procurar o save mais recente para a tela “continuar”, o jogo olha **todas**
+as pastas candidatas (pasta do executável e pasta de dados do usuário) e escolhe
+o `.sav` com data de modificação mais nova; com `--savedir`, só aquela pasta.
+Isso permite alternar entre build portátil e instalação sem perder a partida.
 
 ## 6. Fonte VGA
 
@@ -429,6 +520,20 @@ Conferido contra o bitmap canônico do BIOS:
 ```
 
 Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`.
+
+**Onde a fonte é procurada.** `assets::findFont()` percorre, nesta ordem, o
+primeiro diretório que contenha `font8x16.bin`:
+
+1. `$BURACO_ASSET_DIR` (override para depuração);
+2. `<executável>/assets` — árvore de build, tarball, AppImage;
+3. `<executável>/../share/buraco/assets` — instalação FHS
+   (`/usr/local/bin/buraco` → `/usr/local/share/buraco/assets`);
+4. `BURACO_INSTALL_DATADIR`, o prefixo gravado no build (`cmake --install`);
+5. `./assets`, quando o jogo é iniciado da raiz do repositório.
+
+Se nenhum candidato tiver a fonte, o jogo continua com glifos de fallback e
+lista no `stderr` os diretórios tentados; `--display-info` mostra o caminho
+resolvido.
 
 ## 7. Divergências conscientes do original
 
@@ -450,14 +555,28 @@ Ferramentas: `tools/extract_font.py`, `tools/dosfont.py`, `tools/read_screen.py`
 
 ## 8. Validação
 
-* `ctest --test-dir build` roda os 183 casos de teste (cartas, máquina de
-  turnos, save/load, nomes de arquivo, controladores e hot-seat, rede TCP,
-  protocolo, sessão host/cliente e partidas online em lockstep, invariantes,
-  tela, configuração de vídeo/som/idioma, cálculo e estado da janela, tela de
-  opções, síntese e eventos sonoros). O caso de tela compara
+* `ctest --test-dir build` roda os 194 casos de teste (cartas, máquina de
+  turnos, save/load, nomes de arquivo, pasta de save e busca do save mais
+  recente, controladores e hot-seat, rede TCP, protocolo, sessão host/cliente e
+  partidas online em lockstep, invariantes, tela, configuração de
+  vídeo/som/idioma, cálculo e estado da janela, tela de opções, síntese e
+  eventos sonoros, ordem de busca dos assets). O caso de tela compara
   o hash das 25 linhas com a saída capturada de `--auto 400 --seed 1234`, então
   a divisão do antigo `main.cpp` em módulos não mudou um pixel; os casos de
   idioma conferem as telas em inglês e restauram o português ao terminar.
+* **CI** (`.github/workflows/ci.yml`) roda a suíte no Windows (MSYS2/UCRT64) e
+  no Linux (Ubuntu 22.04, GCC, SDL2 2.0.20). O job Linux acrescenta
+  `--check 500 --seed 4242`, `--savetest 200` e um `--flow` que grava com
+  `--savedir` e depois reencontra o save na tela de continuar. Também instala
+  em `prefix/` e confere, via `--display-info`, que a fonte vem de
+  `prefix/share/buraco/assets`, que o `.desktop` e os dois ícones foram
+  instalados e que com `prefix/bin` sem permissão de escrita os saves vão para
+  `~/.local/share/buraco/buraco/`. Por fim roda
+  `packaging/linux/pack_linux.sh --skip-build`, que valida o pacote e gera
+  `dist/buraco-linux-x86_64.tar.gz` (artefato `buraco-linux-x64`).
+* `--display-info` mostra `config`, `saves` e `font` (com a lista de diretórios
+  tentados quando a fonte não é encontrada), o que torna trivial diagnosticar
+  uma instalação fora do layout esperado.
 * A tradução mantém o português como padrão: sem `buraco.cfg` ou com
   `language=pt`, `--auto 4000 --seed 777`, `--check 20000 --seed 777` e
   `--savetest 900` continuam byte a byte idênticos ao `HEAD` anterior (hashes

@@ -1,0 +1,9 @@
+# Shell scripts must keep LF endings even on Windows checkouts, otherwise the
+# shebang fails when they are run from WSL/Linux.
+*.sh text eol=lf
+
+# Desktop entries are parsed line by line; CRLF makes them invalid.
+*.desktop text eol=lf
+
+# SVG is text and should diff cleanly; the PNG icon is generated from it.
+*.svg text eol=lf

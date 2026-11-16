@@ -2,12 +2,14 @@
 
 #include <SDL.h>
 
+#include "assets.h"
 #include "window_scale.h"
 #include "window_state.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -206,12 +208,17 @@ void Renderer::present(Video& video, double timeSeconds) {
 }
 
 void Renderer::loadFont() {
-    char* base = SDL_GetBasePath();
-    const std::string path = std::string(base ? base : "") + "assets/font8x16.bin";
-    if (base) SDL_free(base);
+    const std::filesystem::path found = assets::findFont();
+    if (found.empty()) {
+        std::fprintf(stderr, "[dos] font not found (using fallback glyphs)\n");
+        for (const std::filesystem::path& dir : assets::searchDirs())
+            std::fprintf(stderr, "[dos]   tried %s\n", dir.string().c_str());
+        return;
+    }
+    const std::string path = found.string();
     FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) {
-        std::fprintf(stderr, "[dos] font not found: %s (using fallback glyphs)\n",
+        std::fprintf(stderr, "[dos] cannot read font: %s (using fallback glyphs)\n",
                      path.c_str());
         return;
     }

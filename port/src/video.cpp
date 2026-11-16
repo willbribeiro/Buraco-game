@@ -1,5 +1,7 @@
 #include "video.h"
 
+#include <cstddef>
+
 namespace dos {
 
 Video::Video() {
@@ -18,7 +20,7 @@ void Video::setEgaPalette() {
 }
 
 void Video::resetText() {
-    for (size_t i = 0; i < text.size(); i += 2) {
+    for (std::size_t i = 0; i < text.size(); i += 2) {
         text[i] = ' ';
         text[i + 1] = 0x07;
     }

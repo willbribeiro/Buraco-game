@@ -4,9 +4,11 @@
 #include "test_framework.hpp"
 #include "test_helpers.h"
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace save;
@@ -138,4 +140,97 @@ TEST_CASE("looksLikeSave only accepts the magic line") {
     CHECK(looksLikeSave(good));
     CHECK(!looksLikeSave(bad));
     CHECK(!looksLikeSave(testutil::tempSavePath("does_not_exist_at_all.sav")));
+}
+
+TEST_CASE("writableDirectory probes a folder and cleans up") {
+    const fs::path dir = fs::path(testutil::tempSavePath("writable/dir")).parent_path();
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    CHECK(writableDirectory(dir));
+
+    // The probe file must not be left behind.
+    for (const fs::directory_entry& entry : fs::directory_iterator(dir))
+        CHECK(entry.path().extension() != ".tmp");
+
+    // A folder that does not exist and a plain file are both unusable.
+    CHECK(!writableDirectory(
+        fs::path(testutil::tempSavePath("writable_missing/dir")).parent_path()));
+    const std::string file = testutil::tempSavePath("writable_file.txt");
+    REQUIRE(testutil::writeText(file, "x"));
+    CHECK(!writableDirectory(file));
+}
+
+TEST_CASE("dir uses the override even when the folder is missing") {
+    const fs::path folder =
+        fs::path(testutil::tempSavePath("save_override_missing/x")).parent_path();
+    std::error_code ec;
+    fs::remove_all(folder, ec);
+    DirGuard guard(folder);
+    CHECK_EQ(dir(), folder);
+}
+
+TEST_CASE("searchDirs narrows to the --savedir override") {
+    const fs::path dir = fs::path(testutil::tempSavePath("save_override_dirs/x")).parent_path();
+    DirGuard guard(dir);
+    const std::vector<fs::path> dirs = searchDirs();
+    CHECK_EQ(dirs.size(), size_t(1));
+    REQUIRE(!dirs.empty());
+    CHECK_EQ(dirs.front(), dir);
+}
+
+TEST_CASE("findLatestSaveIn picks the newest save across folders") {
+    const fs::path first =
+        fs::path(testutil::tempSavePath("latest_first/x")).parent_path();
+    const fs::path second =
+        fs::path(testutil::tempSavePath("latest_second/x")).parent_path();
+    std::error_code ec;
+    fs::create_directories(first, ec);
+    fs::create_directories(second, ec);
+
+    const fs::path older = first / "Ana.sav";
+    const fs::path newer = second / "Bia.sav";
+    REQUIRE(testutil::writeText(older.string(), "BURACO-SAVE 1\nhand 1\n"));
+    REQUIRE(testutil::writeText(newer.string(), "BURACO-SAVE 1\nhand 1\n"));
+
+    const fs::file_time_type now = fs::file_time_type::clock::now();
+    fs::last_write_time(older, now - std::chrono::hours(2), ec);
+    fs::last_write_time(newer, now - std::chrono::hours(1), ec);
+
+    const std::optional<fs::path> found = findLatestSaveIn({first, second});
+    REQUIRE(found.has_value());
+    CHECK_EQ(*found, newer);
+
+    // The order of the folders must not matter, only the timestamp.
+    fs::last_write_time(older, now, ec);
+    fs::last_write_time(newer, now - std::chrono::hours(3), ec);
+    const std::optional<fs::path> again = findLatestSaveIn({first, second});
+    REQUIRE(again.has_value());
+    CHECK_EQ(*again, older);
+}
+
+TEST_CASE("findLatestSaveIn ignores files that are not saves") {
+    const fs::path dir = fs::path(testutil::tempSavePath("latest_skip/x")).parent_path();
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+
+    const fs::path real = dir / "real.sav";
+    REQUIRE(testutil::writeText(real.string(), "BURACO-SAVE 1\nhand 1\n"));
+    REQUIRE(testutil::writeText((dir / "notes.txt").string(), "BURACO-SAVE 1\n"));
+    REQUIRE(testutil::writeText((dir / "fake.sav").string(), "not a save\n"));
+    // A newer file that is not a save must not win.
+    fs::last_write_time(real, fs::file_time_type::clock::now() - std::chrono::hours(5),
+                        ec);
+
+    const std::optional<fs::path> found = findLatestSaveIn({dir});
+    REQUIRE(found.has_value());
+    CHECK_EQ(*found, real);
+}
+
+TEST_CASE("findLatestSaveIn tolerates missing folders") {
+    CHECK(!findLatestSaveIn({}).has_value());
+    const fs::path missing =
+        fs::path(testutil::tempSavePath("latest_missing/x")).parent_path();
+    std::error_code ec;
+    fs::remove_all(missing, ec);
+    CHECK(!findLatestSaveIn({missing}).has_value());
 }

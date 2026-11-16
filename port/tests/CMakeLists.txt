@@ -2,6 +2,7 @@
 # so a test always exercises the same code the game ships.
 add_executable(buraco_tests
     test_framework.cpp
+    assets_test.cpp
     cards_test.cpp
     config_test.cpp
     game_test.cpp
@@ -30,11 +31,14 @@ endif()
 # Console application: the harness prints its report to stdout.
 set_target_properties(buraco_tests PROPERTIES WIN32_EXECUTABLE FALSE)
 
-# The tests link SDL2 through buraco_core, so the DLL must sit next to the
-# executable when it is run from the build tree.
-add_custom_command(TARGET buraco_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:SDL2::SDL2>"
-        "$<TARGET_FILE_DIR:buraco_tests>")
+# The tests link SDL2 through buraco_core, so on Windows the DLL must sit next
+# to the test executable when it is run from the build tree.  On POSIX systems
+# the shared library is found through the normal loader path.
+if(WIN32)
+    add_custom_command(TARGET buraco_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:SDL2::SDL2>"
+            "$<TARGET_FILE_DIR:buraco_tests>")
+endif()
 
 add_test(NAME buraco_tests COMMAND buraco_tests)

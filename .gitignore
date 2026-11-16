@@ -8,6 +8,10 @@
 # Build directories
 build/
 port/build/
+port/build-*/
+
+# Packaging output (packaging/linux/pack_linux.sh)
+dist/
 
 # Generated files from unpacking
 unpack/

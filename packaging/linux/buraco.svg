@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"
+     viewBox="0 0 256 256" role="img" aria-label="Buraco">
+  <title>Buraco</title>
+  <defs>
+    <linearGradient id="felt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b8a52"/>
+      <stop offset="1" stop-color="#145c33"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f0ebdf"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mesa: feltro verde com borda escura. -->
+  <rect x="6" y="6" width="244" height="244" rx="46"
+        fill="url(#felt)" stroke="#0c3f22" stroke-width="5"/>
+
+  <!-- Carta de trás, girada, para dar a ideia de baralho. -->
+  <g transform="rotate(-15 128 128)">
+    <rect x="80" y="50" width="104" height="148" rx="12"
+          fill="#ded7c4" stroke="#8d846c" stroke-width="4"/>
+  </g>
+
+  <!-- Carta da frente com o naipe. -->
+  <g>
+    <rect x="72" y="54" width="108" height="150" rx="13"
+          fill="#000000" opacity="0.28" transform="translate(4 5)"/>
+    <rect x="72" y="54" width="108" height="150" rx="13"
+          fill="url(#card)" stroke="#2a2a2a" stroke-width="4"/>
+    <path d="M12 21s-9-5.7-9-12a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 6.3-9 12-9 12z"
+          fill="#c62828" stroke="#8e1b1b" stroke-width="0.9"
+          transform="translate(126 122) scale(3.4) translate(-12 -10)"/>
+  </g>
+</svg>

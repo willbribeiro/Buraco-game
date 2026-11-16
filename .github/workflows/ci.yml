@@ -66,3 +66,84 @@ jobs:
           name: buraco-windows-x64
           path: dist/
           if-no-files-found: error
+
+  linux:
+    name: Linux (Ubuntu 22.04, GCC)
+    # 22.04 keeps glibc older than ubuntu-latest, so the binary runs on more
+    # distributions.  SDL2 there is 2.0.20, above the 2.0.18 minimum.
+    runs-on: ubuntu-22.04
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build libsdl2-dev
+
+      - name: Configure
+        run: cmake -S port -B port/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build port/build --parallel
+
+      - name: Run unit tests
+        run: ctest --test-dir port/build --output-on-failure
+
+      - name: Headless checks
+        run: |
+          ./port/build/buraco --check 500 --seed 4242 --out check500.txt
+          grep -q '^OK steps=500' check500.txt
+
+          ./port/build/buraco --savetest 200 --save savetest.sav \
+            --seed 31337 --out savetest.txt
+          grep -q '^OK savetest steps=200' savetest.txt
+
+      - name: Initial flow and save discovery
+        run: |
+          mkdir -p flowtest
+          printf 'ENTER\nA\nN\nA\nENTER\nF2\nF3\nESC\n' > keys_flow.txt
+          ./port/build/buraco --flow --script keys_flow.txt --out flow.txt \
+            --savedir flowtest --seed 4242
+          test -f flowtest/ana.sav
+
+          # A second run must find that save and offer to continue.
+          printf 'ENTER\nN\nESC\n' > keys_continue.txt
+          ./port/build/buraco --flow --script keys_continue.txt \
+            --out continue.txt --savedir flowtest --seed 4242
+          grep -aq 'ana\.sav' continue.txt
+
+      - name: Installed layout
+        run: |
+          cmake --install port/build --prefix "$PWD/prefix"
+          ./prefix/bin/buraco --display-info > info.txt
+          grep -q '^font: .*prefix/share/buraco/assets/font8x16.bin$' info.txt
+          test -f prefix/share/applications/buraco.desktop
+          test -f prefix/share/icons/hicolor/scalable/apps/buraco.svg
+          test -f prefix/share/icons/hicolor/256x256/apps/buraco.png
+
+          # A read-only bin directory must send saves to the user data folder.
+          chmod a-w prefix/bin
+          ./prefix/bin/buraco --display-info > info-ro.txt
+          grep -q 'saves: .*/\.local/share/buraco/buraco/$' info-ro.txt
+          chmod u+w prefix/bin
+
+      - name: Package tarball
+        run: |
+          bash packaging/linux/pack_linux.sh --out dist --skip-build
+          tarball=dist/buraco-linux-x86_64.tar.gz
+          tar -tzf "$tarball" | grep -qx 'buraco-linux-x86_64/share/applications/buraco.desktop'
+          tar -tzf "$tarball" | grep -qx 'buraco-linux-x86_64/share/buraco/assets/font8x16.bin'
+
+      - name: Upload artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: buraco-linux-x64
+          path: dist/*.tar.gz
+          if-no-files-found: error

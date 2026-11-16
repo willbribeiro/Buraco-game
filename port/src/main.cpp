@@ -13,6 +13,7 @@
 #include <SDL.h>
 
 #include "game.h"
+#include "assets.h"
 #include "audio.h"
 #include "config.h"
 #include "i18n.h"
@@ -158,6 +159,15 @@ static int printDisplayInfo(const config::Settings& settings, const std::string&
     std::printf("sound: %s\n", settings.sound.enabled ? "on" : "off");
     std::printf("volume: %d%%\n", settings.sound.volume);
     std::printf("language: %s\n", i18n::code(settings.language));
+    std::printf("saves: %s\n", save::dir().string().c_str());
+    const std::filesystem::path font = assets::findFont();
+    if (font.empty()) {
+        std::printf("font: not found (using fallback glyphs)\n");
+        for (const std::filesystem::path& dir : assets::searchDirs())
+            std::printf("  tried: %s\n", dir.string().c_str());
+    } else {
+        std::printf("font: %s\n", font.string().c_str());
+    }
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::printf("display: unavailable (%s)\n", SDL_GetError());
@@ -195,6 +205,10 @@ static int printDisplayInfo(const config::Settings& settings, const std::string&
                         ? "visible"
                         : "off-screen (window will be centered)");
     }
+    // Wayland has no client-side placement: the compositor picks the spot and
+    // SDL reports (0,0), so the saved coordinates are neither used nor saved.
+    if (driver && std::strcmp(driver, "wayland") == 0)
+        std::printf("position: managed by the compositor (wayland, not saved)\n");
     SDL_Quit();
     return 0;
 }
@@ -1419,6 +1433,11 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
         return 1;
     }
+    // Wayland compositors place windows themselves and report (0,0) instead of
+    // the position the user picked, so those events must not be persisted.
+    const char* videoDriver = SDL_GetCurrentVideoDriver();
+    const bool positionManagedByWM =
+        videoDriver != nullptr && std::strcmp(videoDriver, "wayland") == 0;
     if (!guiAfterAuto)
         game.setMessage(i18n::text(i18n::Text::MsgShufflingEnter));
     resetSelection();
@@ -1454,9 +1473,10 @@ int main(int argc, char** argv) {
                                                renderer.expectedHeight(), managed);
                         break;
                     case SDL_WINDOWEVENT_MOVED:
-                        window_state::onMove(cfg.display, e.window.data1, e.window.data2,
-                                             renderer.expectedX(), renderer.expectedY(),
-                                             managed);
+                        if (!positionManagedByWM)
+                            window_state::onMove(cfg.display, e.window.data1,
+                                                 e.window.data2, renderer.expectedX(),
+                                                 renderer.expectedY(), managed);
                         break;
                     case SDL_WINDOWEVENT_MAXIMIZED:
                         window_state::onMaximized(cfg.display, true);

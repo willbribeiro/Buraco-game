@@ -1,0 +1,47 @@
+Buraco - porte SDL2 para Linux
+==============================
+
+Conteudo
+  bin/buraco                                   executavel
+  share/buraco/assets/font8x16.bin             fonte VGA usada pela interface
+  share/applications/buraco.desktop            atalho para o menu
+  share/icons/hicolor/scalable/apps/buraco.svg icone (vetor)
+  share/icons/hicolor/256x256/apps/buraco.png  icone (256x256)
+  README.md, INSTALL.txt
+
+Requisitos
+  SDL2 2.0.18 ou mais novo em tempo de execucao
+  (libsdl2-2.0-0 no Debian/Ubuntu, sdl2 no Arch, SDL2 no Fedora).
+
+Rodar sem instalar
+  ./buraco-linux-x86_64/bin/buraco
+
+  O jogo encontra a fonte em ../share/buraco/assets e grava os saves e o
+  buraco.cfg dentro da pasta extraida, entao nao e preciso root nem uma
+  pasta de dados do usuario.
+
+Instalar no sistema
+  sudo cp -r bin/* /usr/local/bin/
+  sudo cp -r share/* /usr/local/share/
+  sudo update-desktop-database /usr/local/share/applications   # opcional
+  buraco
+
+  Para instalar em /usr, troque /usr/local por /usr.
+
+Desinstalar
+  sudo rm -f  /usr/local/bin/buraco
+  sudo rm -rf /usr/local/share/buraco
+  sudo rm -f  /usr/local/share/applications/buraco.desktop
+  sudo rm -rf /usr/local/share/icons/hicolor/*/apps/buraco.*
+
+Onde ficam os dados
+  Instalado em uma pasta somente leitura (/usr/local, /usr), o jogo grava
+  saves e configuracao em ~/.local/share/buraco/buraco/ (ou em
+  $XDG_DATA_HOME/buraco/buraco/).  Ao procurar o jogo gravado mais recente,
+  ele olha as duas pastas e escolhe o arquivo mais novo.
+
+  buraco --display-info   mostra config, pasta de saves e fonte resolvida.
+
+Controles e opcoes
+  buraco --help           lista as opcoes de linha de comando
+  README.md               regras, controles e detalhes do porte

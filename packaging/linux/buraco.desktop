@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Buraco
+GenericName=Card Game
+GenericName[pt_BR]=Jogo de Cartas
+Comment=Buraco card game with two decks, jokers and canastras
+Comment[pt_BR]=Jogo de buraco com dois baralhos, curingas e canastras
+Exec=buraco
+Icon=buraco
+Terminal=false
+Categories=Game;CardGame;
+Keywords=buraco;cards;cartas;rummy;canastra;
+StartupNotify=true
+StartupWMClass=buraco

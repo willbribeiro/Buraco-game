@@ -219,6 +219,11 @@ std::optional<Socket> Socket::accept(int timeoutMs, std::string* err) {
         if (err) *err = prefixed("accept", lastSocketError());
         return std::nullopt;
     }
+    // Small turn-based messages (HELLO/SEAT/START/ACT) must not wait for
+    // Nagle's algorithm, which can hold a segment until the peer ACKs the
+    // previous one.
+    int nodelay = 1;
+    setOption(peer, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof nodelay);
     if (err) err->clear();
     return Socket(std::intptr_t(peer));
 }
@@ -342,6 +347,8 @@ bool Socket::beginConnect(const std::string& host, std::uint16_t port,
         const NativeSocket handle =
             ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (handle == kInvalidSocket) continue;
+        int nodelay = 1;
+        setOption(handle, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof nodelay);
         if (!setBlocking(handle, false)) {
             closeNative(handle);
             continue;
