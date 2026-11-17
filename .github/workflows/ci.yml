@@ -84,7 +84,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build libsdl2-dev
+            cmake ninja-build libsdl2-dev patchelf
 
       - name: Configure
         run: cmake -S port -B port/build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -133,17 +133,35 @@ jobs:
           grep -q 'saves: .*/\.local/share/buraco/buraco/$' info-ro.txt
           chmod u+w prefix/bin
 
-      - name: Package tarball
+      - name: Package Linux artifacts
         run: |
-          bash packaging/linux/pack_linux.sh --out dist --skip-build
+          bash packaging/linux/pack_linux.sh --out dist --skip-build --deb
           tarball=dist/buraco-linux-x86_64.tar.gz
           tar -tzf "$tarball" | grep -qx 'buraco-linux-x86_64/share/applications/buraco.desktop'
           tar -tzf "$tarball" | grep -qx 'buraco-linux-x86_64/share/buraco/assets/font8x16.bin'
+          dpkg-deb --info dist/buraco_*.deb | grep -q 'Depends: libsdl2-2.0-0 (>= 2.0.18)'
+          dpkg-deb --contents dist/buraco_*.deb | grep -q './usr/share/buraco/assets/font8x16.bin'
+
+          # appimagetool ships as an AppImage; pin it by checksum and run it
+          # with --appimage-extract-and-run (the script does that), since the
+          # runner has no FUSE.
+          curl -fsSL -o /tmp/appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  /tmp/appimagetool" \
+            | sha256sum -c -
+          chmod +x /tmp/appimagetool
+
+          bash packaging/linux/appimage.sh --out dist --skip-build \
+            --appimagetool /tmp/appimagetool
+          ls -l dist
 
       - name: Upload artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: buraco-linux-x64
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.AppImage
           if-no-files-found: error

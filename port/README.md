@@ -130,7 +130,7 @@ O `.desktop` e os ícones vêm de `packaging/linux/` e só são instalados quand
 essa pasta existe no código-fonte (`if(EXISTS ...)`), então um snapshot sem o
 empacotamento continua configurando.
 
-### Pacote Linux
+### Pacotes Linux
 
 `packaging/linux/pack_linux.sh` roda o build e monta um tarball com o mesmo
 layout do `cmake --install`:
@@ -138,6 +138,7 @@ layout do `cmake --install`:
 ```bash
 ./packaging/linux/pack_linux.sh                    # dist/buraco-linux-x86_64.tar.gz
 ./packaging/linux/pack_linux.sh --skip-build       # reaproveita port/build
+./packaging/linux/pack_linux.sh --deb              # tarball + dist/buraco_1.0.0_amd64.deb
 ./packaging/linux/pack_linux.sh --build-dir port/build-linux --out /tmp/out
 ```
 
@@ -147,11 +148,43 @@ quando a ferramenta existe. Antes de compactar, o script executa o binário
 empacotado com `--display-info` (drivers *dummy*) e falha se a fonte não vier de
 `share/buraco/assets` ou se os saves não caírem na pasta do pacote. O
 `.tar.gz` é reproduzível quando `SOURCE_DATE_EPOCH` está definido
-(`tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@...`). O job
-Linux do CI gera esse tarball e publica como artefato `buraco-linux-x64`.
+(`tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@...`).
 `buraco-256.png` é gerado a partir do SVG com
 `rsvg-convert --width 256 --height 256 --format png --output buraco-256.png buraco.svg`
 e fica versionado para o pacote não depender de `librsvg`.
+
+Com `--deb`, o script chama `cpack -G DEB` sobre o `CPackConfig.cmake` do build
+tree. O bloco de CPack em `port/CMakeLists.txt` (só em UNIX) define nome,
+versão `1.0.0` (de `project(... VERSION ...)`), seção `games`, dependência
+`libsdl2-2.0-0 (>= 2.0.18)` e `CPACK_DEBIAN_FILE_NAME DEB-DEFAULT`, gerando
+`buraco_1.0.0_amd64.deb`. A instalação em `/usr` vem de
+`CPACK_PACKAGING_INSTALL_PREFIX`; os documentos caem em
+`/usr/share/doc/buraco` porque `CMAKE_INSTALL_DOCDIR` é sobrescrito (o padrão
+do GNUInstallDirs usaria o nome do projeto, `buraco_port`). A descrição do
+pacote é uma linha só: o CPack transforma cada `\n` de valores multilinha em um
+`;` no campo `Description`.
+
+`packaging/linux/appimage.sh` monta um AppDir e chama o `appimagetool`:
+
+```bash
+./packaging/linux/appimage.sh                      # dist/buraco-x86_64.AppImage
+./packaging/linux/appimage.sh --skip-build --appimagetool /tmp/appimagetool
+```
+
+O AppDir tem `AppRun`, `buraco.desktop`/`buraco.png` na raiz (exigência do
+`appimagetool`), `usr/bin/buraco`, `usr/share/buraco/assets` e os ícones. As
+bibliotecas resolvidas por `ldd` vão para `usr/lib` (`libSDL2-2.0.so.0`
+obrigatória, `libstdc++.so.6` e `libgcc_s.so.1` quando existirem) e o binário
+recebe `patchelf --set-rpath '$ORIGIN/../lib'`; glibc e a pilha X11/Wayland/áudio
+ficam no host. O `appimagetool` é um AppImage, então o script o executa com
+`--appimage-extract-and-run` (funciona sem FUSE) e passa `--no-appstream`. A
+validação roda o AppImage com `--display-info` e, quando o usuário não é root,
+extrai o AppDir, deixa-o somente leitura e confere que os saves passam para
+`~/.local/share/buraco/buraco/`.
+
+O job Linux do CI gera os três arquivos (tarball, `.deb` e AppImage) e publica
+como artefato `buraco-linux-x64`; o `appimagetool` 1.9.1 é baixado e conferido
+por SHA-256 antes do uso.
 
 ### Testes
 
@@ -572,8 +605,11 @@ resolvido.
   `prefix/share/buraco/assets`, que o `.desktop` e os dois ícones foram
   instalados e que com `prefix/bin` sem permissão de escrita os saves vão para
   `~/.local/share/buraco/buraco/`. Por fim roda
-  `packaging/linux/pack_linux.sh --skip-build`, que valida o pacote e gera
-  `dist/buraco-linux-x86_64.tar.gz` (artefato `buraco-linux-x64`).
+  `packaging/linux/pack_linux.sh --skip-build --deb` e
+  `packaging/linux/appimage.sh --skip-build --appimagetool /tmp/appimagetool`,
+  que validam os pacotes e geram `dist/buraco-linux-x86_64.tar.gz`,
+  `dist/buraco_1.0.0_amd64.deb` e `dist/buraco-x86_64.AppImage` (artefato
+  `buraco-linux-x64`).
 * `--display-info` mostra `config`, `saves` e `font` (com a lista de diretórios
   tentados quando a fonte não é encontrada), o que torna trivial diagnosticar
   uma instalação fora do layout esperado.

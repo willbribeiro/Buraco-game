@@ -1,11 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
-project(buraco_port LANGUAGES CXX)
+project(buraco_port VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(GNUInstallDirs)
+# GNUInstallDirs derives DOCDIR from the project name (buraco_port); the
+# installed package is just "buraco".
+set(CMAKE_INSTALL_DOCDIR "${CMAKE_INSTALL_DATADIR}/doc/buraco")
 
 option(BURACO_BUILD_TESTS "Build the unit tests" ON)
 
@@ -98,6 +101,16 @@ if (EXISTS "${BURACO_PACKAGING_DIR}/buraco-256.png")
         RENAME buraco.png)
 endif()
 
+# Documentation that belongs in /usr/share/doc (also used by the .deb).
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../README.md")
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../README.md"
+        DESTINATION ${CMAKE_INSTALL_DOCDIR} RENAME README.md)
+endif()
+if (EXISTS "${BURACO_PACKAGING_DIR}/INSTALL.txt")
+    install(FILES "${BURACO_PACKAGING_DIR}/INSTALL.txt"
+        DESTINATION ${CMAKE_INSTALL_DOCDIR})
+endif()
+
 if (BURACO_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
@@ -124,4 +137,32 @@ if (MINGW)
                     "$<TARGET_FILE_DIR:buraco>/${BURACO_RUNTIME_DLL}")
         endif()
     endforeach()
+endif()
+
+# `cpack -G DEB` reuses the install rules above and produces
+# buraco_<version>_<arch>.deb.  packaging/linux/pack_linux.sh --deb wraps it,
+# and the tarball/AppImage are assembled by the scripts (they need files the
+# install tree does not have, such as the SDL2 runtime for the AppImage).
+if (UNIX AND NOT APPLE)
+    set(CPACK_PACKAGE_NAME "buraco")
+    set(CPACK_PACKAGE_VENDOR "willbribeiro")
+    set(CPACK_PACKAGE_CONTACT "Willian Ribeiro <140359443+willbribeiro@users.noreply.github.com>")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+        "Buraco card game with two decks and jokers (native SDL2 port)")
+    # One line: CPack writes multi-line values with a stray ';' per newline.
+    set(CPACK_PACKAGE_DESCRIPTION
+        "Native C++20/SDL2 port of the MS-DOS game BURACO.EXE: two decks, jokers, canastras, hot-seat and LAN play, Portuguese and English interface, VGA 8x16 text mode look.")
+    set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/willbribeiro/Buraco-game")
+    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+
+    set(CPACK_DEBIAN_PACKAGE_SECTION "games")
+    set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libsdl2-2.0-0 (>= 2.0.18)")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+
+    set(CPACK_PACKAGE_EXECUTABLES "buraco;Buraco")
+    set(CPACK_STRIP_FILES TRUE)
+    include(CPack)
 endif()

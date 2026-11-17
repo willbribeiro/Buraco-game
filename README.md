@@ -67,12 +67,16 @@ Com o binário instalado, o jogo procura a fonte em
 Rodando direto da árvore de build, tudo fica ao lado do executável, como no
 Windows. `buraco --display-info` mostra os caminhos resolvidos.
 
-### Pacote Linux
+### Pacotes Linux
 
 ```bash
 ./packaging/linux/pack_linux.sh              # build + dist/buraco-linux-x86_64.tar.gz
-./packaging/linux/pack_linux.sh --skip-build # reaproveita port/build
+./packaging/linux/pack_linux.sh --deb        # tarball + dist/buraco_1.0.0_amd64.deb
+./packaging/linux/appimage.sh                # build + dist/buraco-x86_64.AppImage
 ```
+
+Os dois scripts aceitam `--build-dir DIR`, `--out DIR` e `--skip-build`; o do
+AppImage também aceita `--appimagetool ARQUIVO`.
 
 O tarball usa o mesmo layout do `cmake --install`:
 
@@ -83,6 +87,7 @@ buraco-linux-x86_64/
   share/applications/buraco.desktop
   share/icons/hicolor/scalable/apps/buraco.svg
   share/icons/hicolor/256x256/apps/buraco.png
+  share/doc/buraco/{README.md,INSTALL.txt}
   README.md
   INSTALL.txt
 ```
@@ -92,8 +97,40 @@ Basta extrair e rodar `./buraco-linux-x86_64/bin/buraco` (a fonte é achada em
 sistema, `sudo cp -r bin/* /usr/local/bin/` e
 `sudo cp -r share/* /usr/local/share/`. O script valida o pacote executando o
 binário com `--display-info` antes de compactar e produz um `.tar.gz`
-reproduzível quando `SOURCE_DATE_EPOCH` está definido. O CI publica o tarball
-como artefato `buraco-linux-x64`.
+reproduzível quando `SOURCE_DATE_EPOCH` está definido.
+
+O `.deb` é gerado pelo CPack a partir das mesmas regras de `install()`, com
+versão `1.0.0` e dependência declarada de `libsdl2-2.0-0 (>= 2.0.18)`:
+
+```bash
+sudo apt install ./dist/buraco_1.0.0_amd64.deb
+buraco
+sudo apt remove buraco
+```
+
+Ele instala `/usr/bin/buraco`, a fonte em `/usr/share/buraco/assets`, o atalho
+`.desktop`, os ícones e a documentação em `/usr/share/doc/buraco`.
+
+O AppImage é um arquivo único que leva junto o SDL2 e o runtime C++ usados no
+build (glibc e a pilha de vídeo/áudio continuam vindo do sistema, como o SDL
+espera):
+
+```bash
+chmod +x dist/buraco-x86_64.AppImage
+./dist/buraco-x86_64.AppImage
+```
+
+O `appimagetool` é um download separado
+([AppImage/appimagetool](https://github.com/AppImage/appimagetool/releases)); o
+script o procura no `PATH` ou em `--appimagetool`. Como ele também é um
+AppImage, o script o executa com `--appimage-extract-and-run`, então não é
+preciso FUSE. Montado, o AppImage é somente leitura e os saves vão para
+`~/.local/share/buraco/buraco/`.
+
+O CI publica os três arquivos no artefato `buraco-linux-x64`. Ele roda no
+Ubuntu 22.04 (glibc 2.35), então o AppImage gerado lá abre em qualquer distro
+dessa época em diante; um AppImage gerado localmente exige uma distro tão nova
+quanto a máquina do build.
 
 ## Controles
 
@@ -174,7 +211,7 @@ port/            o porte SDL2 (C++20)
   tests/         testes unitários sem dependências externas
   assets/        font8x16.bin (fonte VGA extraída do executável)
   build.sh       build Linux (equivalente ao build.ps1)
-packaging/linux/ tarball: pack_linux.sh, buraco.desktop, ícones (SVG/PNG)
+packaging/linux/ tarball/.deb/AppImage: pack_linux.sh, appimage.sh, .desktop, ícones
 .github/workflows/ci.yml  CI: build + testes no Windows (MSYS2) e no Linux
 shots/           capturas do original e do porte
 tools/           scripts de captura (Python), extração de fonte, run/livre
@@ -238,4 +275,4 @@ com `--savedir`), confere que o binário instalado acha a fonte em
 - [x] Saves e config graváveis fora da pasta do executável (instalação somente leitura)
 - [x] CI Linux (build, testes, modos headless e verificação do layout instalado)
 - [x] Pacote Linux: tarball com `.desktop` e ícone (`packaging/linux/pack_linux.sh`)
-- [ ] Pacote Linux: `.deb` e/ou AppImage (opcionais)
+- [x] Pacote Linux: `.deb` (CPack) e AppImage (`packaging/linux/appimage.sh`)
