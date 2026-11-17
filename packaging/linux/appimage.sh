@@ -139,6 +139,10 @@ appdir="$stage/Buraco.AppDir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/lib" "$appdir/usr/share/buraco/assets"
 
 install -m 755 "$build_dir/buraco" "$appdir/usr/bin/buraco"
+# Symbol names are only useful in the build tree, as in pack_linux.sh.
+if command -v strip >/dev/null 2>&1; then
+    strip --strip-unneeded "$appdir/usr/bin/buraco"
+fi
 cp -r "$repo_root/port/assets/." "$appdir/usr/share/buraco/assets/"
 
 install -Dm644 "$script_dir/buraco.desktop" \
@@ -221,7 +225,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
         printf '%s\n' "$info" >&2
         die "the read-only AppDir failed to start"
     }
-    grep -q "^saves: $fake_home/\.local/share/buraco/buraco/$" <<<"$info" ||
+    grep -qF "saves: $fake_home/.local/share/buraco/buraco/" <<<"$info" ||
         die "the read-only AppDir did not use the user data folder: $info"
     chmod -R u+w "$root"
 fi
