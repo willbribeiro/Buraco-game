@@ -38,7 +38,8 @@ Os scripts de build detalhados usam *MinGW-w64 GCC 16.2.0 (UCRT, POSIX, SEH)*,
 Em builds MinGW, o `POST_BUILD` copia para `port\build` as DLLs de runtime do
 compilador (`libgcc_s_seh-1.dll`, `libstdc++-6.dll` e `libwinpthread-1.dll`),
 além de `assets/`. A `SDL2.dll` continua vindo do SDK do SDL2. O zip da release
-inclui todas elas, então o jogo roda em PCs sem o MinGW instalado.
+inclui todas elas e o `LICENSE`, então o jogo roda em PCs sem o MinGW
+instalado.
 
 ### Linux
 
@@ -87,9 +88,10 @@ buraco-linux-x86_64/
   share/applications/buraco.desktop
   share/icons/hicolor/scalable/apps/buraco.svg
   share/icons/hicolor/256x256/apps/buraco.png
-  share/doc/buraco/{README.md,INSTALL.txt}
+  share/doc/buraco/{README.md,INSTALL.txt,LICENSE,copyright}
   README.md
   INSTALL.txt
+  LICENSE
 ```
 
 Basta extrair e rodar `./buraco-linux-x86_64/bin/buraco` (a fonte é achada em
@@ -276,3 +278,20 @@ com `--savedir`), confere que o binário instalado acha a fonte em
 - [x] CI Linux (build, testes, modos headless e verificação do layout instalado)
 - [x] Pacote Linux: tarball com `.desktop` e ícone (`packaging/linux/pack_linux.sh`)
 - [x] Pacote Linux: `.deb` (CPack) e AppImage (`packaging/linux/appimage.sh`)
+
+## Licença
+
+O porte (código em `port/`, testes, scripts de build e empacotamento) é
+software livre sob a **GNU General Public License, versão 3 ou posterior**
+(`GPL-3.0-or-later`). O texto completo está em [`LICENSE`](LICENSE); os
+pacotes também levam a licença (`/usr/share/doc/buraco/LICENSE`) e o arquivo
+`copyright` no formato DEP-5.
+
+Em resumo, a GPL-3 permite usar, estudar, modificar e redistribuir o programa
+(inclusive comercialmente), desde que o código derivado continue sob a mesma
+licença e a fonte seja disponibilizada. Não há garantia de nenhum tipo.
+
+O jogo original (`BURACO.EXE`) **não** faz parte deste projeto e continua com
+seus donos. A fonte VGA extraída dele (`port/assets/font8x16.bin`) e as
+capturas em `shots/` são mantidas para preservar a aparência original e **não**
+são relicenciadas pela GPL-3.

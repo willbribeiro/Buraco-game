@@ -158,11 +158,13 @@ tree. O bloco de CPack em `port/CMakeLists.txt` (só em UNIX) define nome,
 versão `1.0.0` (de `project(... VERSION ...)`), seção `games`, dependência
 `libsdl2-2.0-0 (>= 2.0.18)` e `CPACK_DEBIAN_FILE_NAME DEB-DEFAULT`, gerando
 `buraco_1.0.0_amd64.deb`. A instalação em `/usr` vem de
-`CPACK_PACKAGING_INSTALL_PREFIX`; os documentos caem em
-`/usr/share/doc/buraco` porque `CMAKE_INSTALL_DOCDIR` é sobrescrito (o padrão
-do GNUInstallDirs usaria o nome do projeto, `buraco_port`). A descrição do
-pacote é uma linha só: o CPack transforma cada `\n` de valores multilinha em um
-`;` no campo `Description`.
+`CPACK_PACKAGING_INSTALL_PREFIX`; os documentos (`README.md`, `INSTALL.txt`,
+`LICENSE` e o `copyright` DEP-5) caem em `/usr/share/doc/buraco` porque
+`CMAKE_INSTALL_DOCDIR` é sobrescrito (o padrão do GNUInstallDirs usaria o nome
+do projeto, `buraco_port`). O CPack não gera `copyright` sozinho, então o
+arquivo vem de `packaging/linux/copyright` e o `install()` o copia junto. A
+descrição do pacote é uma linha só: o CPack transforma cada `\n` de valores
+multilinha em um `;` no campo `Description`.
 
 `packaging/linux/appimage.sh` monta um AppDir e chama o `appimagetool`:
 
@@ -172,7 +174,8 @@ pacote é uma linha só: o CPack transforma cada `\n` de valores multilinha em u
 ```
 
 O AppDir tem `AppRun`, `buraco.desktop`/`buraco.png` na raiz (exigência do
-`appimagetool`), `usr/bin/buraco`, `usr/share/buraco/assets` e os ícones. As
+`appimagetool`), `usr/bin/buraco`, `usr/share/buraco/assets`, os ícones e
+`usr/share/doc/buraco/LICENSE` (a GPL-3 pede a licença junto do binário). As
 bibliotecas resolvidas por `ldd` vão para `usr/lib` (`libSDL2-2.0.so.0`
 obrigatória, `libstdc++.so.6` e `libgcc_s.so.1` quando existirem) e o binário
 recebe `patchelf --set-rpath '$ORIGIN/../lib'`; glibc e a pilha X11/Wayland/áudio

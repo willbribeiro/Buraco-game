@@ -15,9 +15,10 @@
 #     share/applications/buraco.desktop
 #     share/icons/hicolor/scalable/apps/buraco.svg
 #     share/icons/hicolor/256x256/apps/buraco.png
-#     share/doc/buraco/{README.md,INSTALL.txt}
+#     share/doc/buraco/{README.md,INSTALL.txt,LICENSE,copyright}
 #     README.md
 #     INSTALL.txt
+#     LICENSE
 #
 # Extracting it is enough to play: `./buraco-linux-x86_64/bin/buraco` finds the
 # font in ../share/buraco/assets and keeps saves/config inside the folder
@@ -123,6 +124,7 @@ fi
 
 cp "$repo_root/README.md" "$package/README.md"
 cp "$script_dir/INSTALL.txt" "$package/INSTALL.txt"
+cp "$repo_root/LICENSE" "$package/LICENSE"
 
 for required in \
     bin/buraco \

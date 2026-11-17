@@ -106,8 +106,17 @@ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../README.md")
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../README.md"
         DESTINATION ${CMAKE_INSTALL_DOCDIR} RENAME README.md)
 endif()
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE")
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE"
+        DESTINATION ${CMAKE_INSTALL_DOCDIR})
+endif()
 if (EXISTS "${BURACO_PACKAGING_DIR}/INSTALL.txt")
     install(FILES "${BURACO_PACKAGING_DIR}/INSTALL.txt"
+        DESTINATION ${CMAKE_INSTALL_DOCDIR})
+endif()
+# DEP-5 copyright file: Debian policy requires it and CPack does not create it.
+if (EXISTS "${BURACO_PACKAGING_DIR}/copyright")
+    install(FILES "${BURACO_PACKAGING_DIR}/copyright"
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
 endif()
 

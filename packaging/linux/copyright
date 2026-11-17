@@ -1,0 +1,30 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: buraco
+Source: https://github.com/willbribeiro/Buraco-game
+
+Files: *
+Copyright: 2026 Willian Ribeiro <140359443+willbribeiro@users.noreply.github.com>
+License: GPL-3+
+ This program is free software: you can redistribute it and/or modify it
+ under the terms of the GNU General Public License as published by the Free
+ Software Foundation, either version 3 of the License, or (at your option)
+ any later version.
+ .
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ more details.
+ .
+ You should have received a copy of the GNU General Public License along with
+ this program.  If not, see <https://www.gnu.org/licenses/>.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in "/usr/share/common-licenses/GPL-3".
+
+Files: port/assets/font8x16.bin
+Copyright: original BURACO.EXE rights holders (unknown)
+Comment: VGA font extracted from the original MS-DOS executable and shipped so
+ the port keeps the original look.  It is not part of the reimplementation and
+ is not relicensed under the GPL-3+; all rights remain with its owners.
+License: other
+ This file is distributed for compatibility with the original game only.

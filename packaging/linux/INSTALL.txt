@@ -8,7 +8,8 @@ Conteudo do tarball
   share/icons/hicolor/scalable/apps/buraco.svg icone (vetor)
   share/icons/hicolor/256x256/apps/buraco.png  icone (256x256)
   share/doc/buraco/README.md, INSTALL.txt      documentacao
-  README.md, INSTALL.txt                       copias na raiz
+  share/doc/buraco/LICENSE, copyright          licenca (GPL-3.0-or-later)
+  README.md, INSTALL.txt, LICENSE              copias na raiz
 
 Requisitos
   SDL2 2.0.18 ou mais novo em tempo de execucao
@@ -65,3 +66,8 @@ Onde ficam os dados
 Controles e opcoes
   buraco --help           lista as opcoes de linha de comando
   README.md               regras, controles e detalhes do porte
+
+Licenca
+  GPL-3.0-or-later.  O texto completo esta em LICENSE (ou em
+  /usr/share/doc/buraco/LICENSE).  O jogo original BURACO.EXE nao faz parte
+  deste projeto, e a fonte VGA extraida dele nao e relicenciada.

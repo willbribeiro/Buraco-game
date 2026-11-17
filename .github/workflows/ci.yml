@@ -58,6 +58,7 @@ jobs:
           cp port/build/buraco.exe dist/
           cp port/build/*.dll dist/
           cp -r port/assets dist/assets
+          cp LICENSE dist/
 
       - name: Upload artifact
         if: github.event_name != 'pull_request'
@@ -139,8 +140,10 @@ jobs:
           tarball=dist/buraco-linux-x86_64.tar.gz
           tar -tzf "$tarball" | grep -qx 'buraco-linux-x86_64/share/applications/buraco.desktop'
           tar -tzf "$tarball" | grep -qx 'buraco-linux-x86_64/share/buraco/assets/font8x16.bin'
+          tar -tzf "$tarball" | grep -qx 'buraco-linux-x86_64/share/doc/buraco/LICENSE'
           dpkg-deb --info dist/buraco_*.deb | grep -q 'Depends: libsdl2-2.0-0 (>= 2.0.18)'
           dpkg-deb --contents dist/buraco_*.deb | grep -q './usr/share/buraco/assets/font8x16.bin'
+          dpkg-deb --contents dist/buraco_*.deb | grep -q './usr/share/doc/buraco/copyright'
 
           # appimagetool ships as an AppImage; pin it by checksum and run it
           # with --appimage-extract-and-run (the script does that), since the

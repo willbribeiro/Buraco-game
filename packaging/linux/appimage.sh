@@ -16,6 +16,7 @@
 #     usr/lib/libstdc++.so.6, libgcc_s.so.1
 #     usr/share/buraco/assets/font8x16.bin
 #     usr/share/applications/buraco.desktop
+#     usr/share/doc/buraco/LICENSE
 #     usr/share/icons/hicolor/{scalable,256x256}/apps/buraco.*
 #
 # SDL2 is bundled because the game is built against whatever SDL the build host
@@ -151,6 +152,9 @@ install -Dm644 "$script_dir/buraco.svg" \
     "$appdir/usr/share/icons/hicolor/scalable/apps/buraco.svg"
 install -Dm644 "$script_dir/buraco-256.png" \
     "$appdir/usr/share/icons/hicolor/256x256/apps/buraco.png"
+
+# GPL-3: the license has to travel with the binary.
+install -Dm644 "$repo_root/LICENSE" "$appdir/usr/share/doc/buraco/LICENSE"
 
 # appimagetool looks for the desktop entry and the icon at the AppDir root.
 install -m 644 "$script_dir/buraco.desktop" "$appdir/buraco.desktop"
